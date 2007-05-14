@@ -41,90 +41,111 @@
 #include "main.h"
 
 static void printversion(void) {
-  if (fputs(_("Debian GNU/Linux `"), stdout) < 0) werr("stdout");
-  if (fputs(DPKG, stdout) < 0) werr("stdout");
-  if (fputs(_("' package management program version "), stdout) < 0) werr("stdout");
-  if (fputs( DPKG_VERSION_ARCH ".\n", stdout) < 0) werr("stdout");
-  if (fputs(_( "This is free software; see the GNU General Public Licence version 2 or\n"
-		"later for copying conditions.  There is NO warranty.\n"
-		"See " DPKG " --licence for copyright and license details.\n"),
-		 stdout) < 0) werr("stdout");
+  if (printf(_("Debian `%s' package management program version %s.\n"),
+	     DPKG, DPKG_VERSION_ARCH) < 0) werr("stdout");
+  if (printf(_("This is free software; see the GNU General Public License version 2 or\n"
+	       "later for copying conditions. There is NO warranty.\n"
+	       "See %s --license for copyright and license details.\n"),
+	     DPKG) < 0) werr("stdout");
 }
 /*
    options that need fixing:
   dpkg --yet-to-unpack                 \n\
   */
 static void usage(void) {
-  if (fprintf (stdout, _("\
-Usage: \n\
-  dpkg -i|--install      <.deb file name> ... | -R|--recursive <dir> ...\n\
-  dpkg --unpack          <.deb file name> ... | -R|--recursive <dir> ...\n\
-  dpkg -A|--record-avail <.deb file name> ... | -R|--recursive <dir> ...\n\
-  dpkg --configure              <package name> ... | -a|--pending\n\
-  dpkg -r|--remove | -P|--purge <package name> ... | -a|--pending\n\
-  dpkg --get-selections [<pattern> ...]    get list of selections to stdout\n\
-  dpkg --set-selections                    set package selections from stdin\n\
-  dpkg --update-avail <Packages-file>      replace available packages info\n\
-  dpkg --merge-avail <Packages-file>       merge with info from file\n\
-  dpkg --clear-avail                       erase existing available info\n\
-  dpkg --forget-old-unavail                forget uninstalled unavailable pkgs\n\
-  dpkg -s|--status <package-name> ...      display package status details\n\
-  dpkg -p|--print-avail <package-name> ... display available version details\n\
-  dpkg -L|--listfiles <package-name> ...   list files `owned' by package(s)\n\
-  dpkg -l|--list [<pattern> ...]           list packages concisely\n\
-  dpkg -S|--search <pattern> ...           find package(s) owning file(s)\n\
-  dpkg -C|--audit                          check for broken package(s)\n\
-  dpkg --print-architecture                print dpkg architecture\n\
-  dpkg --compare-versions <a> <rel> <b>    compare version numbers - see below\n\
-  dpkg --help | --version                  show this help / version number\n\
-  dpkg --force-help | -Dh|--debug=help     help on forcing resp. debugging\n\
-  dpkg --licence                           print copyright licensing terms\n\
-\n\
-Use dpkg -b|--build|-c|--contents|-e|--control|-I|--info|-f|--field|\n\
- -x|--extract|-X|--vextract|--fsys-tarfile  on archives (type %s --help.)\n\
-\n\
-For internal use: dpkg --assert-support-predepends | --predep-package |\n\
-  --assert-working-epoch | --assert-long-filenames | --assert-multi-conrep\n\
-\n\
-Options:\n\
-  --admindir=<directory>     Use <directory> instead of %s\n\
-  --root=<directory>         Install on alternative system rooted elsewhere\n\
-  --instdir=<directory>      Change inst'n root without changing admin dir\n\
-  -O|--selected-only         Skip packages not selected for install/upgrade\n\
-  -E|--skip-same-version     Skip packages whose same version is installed\n\
-  -G|--refuse-downgrade      Skip packages with earlier version than installed\n\
-  -B|--auto-deconfigure      Install even if it would break some other package\n\
-  --no-debsig                Do no try to verify package signatures\n\
-  --no-act|--dry-run|--simulate\n\
-                             Just say what we would do - don't do it\n\
-  -D|--debug=<octal>         Enable debugging - see -Dhelp or --debug=help\n\
-  --status-fd <n>            Send status change updates to file descriptor <n>\n\
-  --log=<filename>           Log status changes and actions to <filename>\n\
-  --ignore-depends=<package>,... Ignore dependencies involving <package>\n\
-  --force-...                    Override problems - see --force-help\n\
-  --no-force-...|--refuse-...    Stop when problems encountered\n\
-  --abort-after <n>              Abort after encountering <n> errors\n\
-\n\
-Comparison operators for --compare-versions are:\n\
- lt le eq ne ge gt       (treat empty version as earlier than any version);\n\
- lt-nl le-nl ge-nl gt-nl (treat empty version as later than any version);\n\
- < << <= = >= >> >       (only for compatibility with control file syntax).\n\
-\n\
-Use `dselect' or `aptitude' for user-friendly package management.\n"),
-	    BACKEND, ADMINDIR) < 0) werr ("stdout");
+  if (fprintf (stdout, _(
+"Usage: %s [<option> ...] <command>\n"
+"\n"), DPKG) < 0) werr ("stdout");
+
+  if (fprintf (stdout, _(
+"Commands:\n"
+"  -i|--install       <.deb file name> ... | -R|--recursive <directory> ...\n"
+"  --unpack           <.deb file name> ... | -R|--recursive <directory> ...\n"
+"  -A|--record-avail  <.deb file name> ... | -R|--recursive <directory> ...\n"
+"  --configure        <package> ... | -a|--pending\n"
+"  -r|--remove        <package> ... | -a|--pending\n"
+"  -P|--purge         <package> ... | -a|--pending\n"
+"  --get-selections [<pattern> ...] Get list of selections to stdout.\n"
+"  --set-selections                 Set package selections from stdin.\n"
+"  --clear-selections               Deselect every non-essential package.\n"
+"  --update-avail <Packages-file>   Replace available packages info.\n"
+"  --merge-avail <Packages-file>    Merge with info from file.\n"
+"  --clear-avail                    Erase existing available info.\n"
+"  --forget-old-unavail             Forget uninstalled unavailable pkgs.\n"
+"  -s|--status <package> ...        Display package status details.\n"
+"  -p|--print-avail <package> ...   Display available version details.\n"
+"  -L|--listfiles <package> ...     List files `owned' by package(s).\n"
+"  -l|--list [<pattern> ...]        List packages concisely.\n"
+"  -S|--search <pattern> ...        Find package(s) owning file(s).\n"
+"  -C|--audit                       Check for broken package(s).\n"
+"  --print-architecture             Print dpkg architecture.\n"
+"  --compare-versions <a> <op> <b>  Compare version numbers - see below.\n"
+"  --force-help                     Show help on forcing.\n"
+"  -Dh|--debug=help                 Show help on debugging.\n"
+"\n")) < 0) werr ("stdout");
+
+  if (fprintf (stdout, _(
+"  -h|--help                        Show this help message.\n"
+"  --version                        Show the version.\n"
+"  --license|--licence              Show the copyright licensing terms.\n"
+"\n")) < 0) werr ("stdout");
+
+  if (fprintf (stdout, _(
+"Use dpkg -b|--build|-c|--contents|-e|--control|-I|--info|-f|--field|\n"
+" -x|--extract|-X|--vextract|--fsys-tarfile  on archives (type %s --help).\n"
+"\n"), BACKEND) < 0) werr ("stdout");
+
+  if (fprintf (stdout, _(
+"For internal use: dpkg --assert-support-predepends | --predep-package |\n"
+"  --assert-working-epoch | --assert-long-filenames | --assert-multi-conrep.\n"
+"\n")) < 0) werr ("stdout");
+
+  if (fprintf (stdout, _(
+"Options:\n"
+"  --admindir=<directory>     Use <directory> instead of %s.\n"
+"  --root=<directory>         Install on a different root directory.\n"
+"  --instdir=<directory>      Change installation dir without changing admin dir.\n"
+"  -O|--selected-only         Skip packages not selected for install/upgrade.\n"
+"  -E|--skip-same-version     Skip packages whose same version is installed.\n"
+"  -G|--refuse-downgrade      Skip packages with earlier version than installed.\n"
+"  -B|--auto-deconfigure      Install even if it would break some other package.\n"
+"  --no-debsig                Do not try to verify package signatures.\n"
+"  --no-act|--dry-run|--simulate\n"
+"                             Just say what we would do - don't do it.\n"
+"  -D|--debug=<octal>         Enable debugging (see -Dhelp or --debug=help).\n"
+"  --status-fd <n>            Send status change updates to file descriptor <n>.\n"
+"  --log=<filename>           Log status changes and actions to <filename>.\n"
+"  --ignore-depends=<package>,...\n"
+"                             Ignore dependencies involving <package>.\n"
+"  --force-...                Override problems (see --force-help).\n"
+"  --no-force-...|--refuse-...\n"
+"                             Stop when problems encountered.\n"
+"  --abort-after <n>          Abort after encountering <n> errors.\n"
+"\n"), ADMINDIR) < 0) werr ("stdout");
+
+  if (fprintf (stdout, _(
+"Comparison operators for --compare-versions are:\n"
+"  lt le eq ne ge gt       (treat empty version as earlier than any version);\n"
+"  lt-nl le-nl ge-nl gt-nl (treat empty version as later than any version);\n"
+"  < << <= = >= >> >       (only for compatibility with control file syntax).\n"
+"\n")) < 0) werr ("stdout");
+
+  if (fprintf (stdout, _(
+"Use `dselect' or `aptitude' for user-friendly package management.\n")) < 0)
+  werr ("stdout");
 }
 
 const char thisname[]= "dpkg";
-char *architecture;
-const char printforhelp[]= N_("\
-Type dpkg --help for help about installing and deinstalling packages [*];\n\
-Use `dselect' or `aptitude' for user-friendly package management;\n\
-Type dpkg -Dhelp for a list of dpkg debug flag values;\n\
-Type dpkg --force-help for a list of forcing options;\n\
-Type dpkg-deb --help for help about manipulating *.deb files;\n\
-Type dpkg --licence for copyright licence and lack of warranty (GNU GPL) [*].\n\
-\n\
-Options marked [*] produce a lot of output - pipe it through `less' or `more' !");
+const char architecture[]= ARCHITECTURE;
+const char printforhelp[]= N_(
+"Type dpkg --help for help about installing and deinstalling packages [*];\n"
+"Use `dselect' or `aptitude' for user-friendly package management;\n"
+"Type dpkg -Dhelp for a list of dpkg debug flag values;\n"
+"Type dpkg --force-help for a list of forcing options;\n"
+"Type dpkg-deb --help for help about manipulating *.deb files;\n"
+"Type dpkg --license for copyright license and lack of warranty (GNU GPL) [*].\n"
+"\n"
+"Options marked [*] produce a lot of output - pipe it through `less' or `more' !");
 
 const struct cmdinfo *cipaction= 0;
 int f_pending=0, f_recursive=0, f_alsoselect=1, f_skipsame=0, f_noact=0;
@@ -133,7 +154,7 @@ unsigned long f_debug=0;
 /* Change fc_overwrite to 1 to enable force-overwrite by default */
 int fc_downgrade=1, fc_configureany=0, fc_hold=0, fc_removereinstreq=0, fc_overwrite=0;
 int fc_removeessential=0, fc_conflicts=0, fc_depends=0, fc_dependsversion=0;
-int fc_autoselect=1, fc_badpath=0, fc_overwritediverted=0, fc_architecture=0;
+int fc_badpath=0, fc_overwritediverted=0, fc_architecture=0;
 int fc_nonroot=0, fc_overwritedir=0, fc_conff_new=0, fc_conff_miss=0;
 int fc_conff_old=0, fc_conff_def=0;
 int fc_badverify = 0;
@@ -159,7 +180,6 @@ static const struct forceinfo {
   { "confmiss",            &fc_conff_miss               },
   { "depends",             &fc_depends                  },
   { "depends-version",     &fc_dependsversion           },
-  { "auto-select",         &fc_autoselect               },
   { "bad-path",            &fc_badpath                  },
   { "not-root",            &fc_nonroot                  },
   { "overwrite",           &fc_overwrite                },
@@ -167,6 +187,8 @@ static const struct forceinfo {
   { "overwrite-dir",       &fc_overwritedir             },
   { "architecture",        &fc_architecture             },
   { "bad-verify",          &fc_badverify                },
+  /* FIXME: obsolete options, remove in the future. */
+  { "auto-select",         NULL                         },
   {  0                                                  }
 };
 
@@ -181,7 +203,8 @@ static void versiononly(const struct cmdinfo *cip, const char *value) {
 
 static void setaction(const struct cmdinfo *cip, const char *value) {
   if (cipaction)
-    badusage(_("conflicting actions --%s and --%s"),cip->olong,cipaction->olong);
+    badusage(_("conflicting actions -%c (--%s) and -%c (--%s)"),
+             cip->oshort, cip->olong, cipaction->oshort, cipaction->olong);
   cipaction= cip;
 }
 
@@ -193,21 +216,23 @@ static void setdebug(const struct cmdinfo *cpi, const char *value) {
   char *endp;
 
   if (*value == 'h') {
-    if (printf(
-_("%s debugging option, --debug=<octal> or -D<octal>:\n\n\
- number  ref. in source   description\n\
-      1   general           Generally helpful progress information\n\
-      2   scripts           Invocation and status of maintainer scripts\n\
-     10   eachfile          Output for each file processed\n\
-    100   eachfiledetail    Lots of output for each file processed\n\
-     20   conff             Output for each configuration file\n\
-    200   conffdetail       Lots of output for each configuration file\n\
-     40   depcon            Dependencies and conflicts\n\
-    400   depcondetail      Lots of dependencies/conflicts output\n\
-   1000   veryverbose       Lots of drivel about eg the dpkg/info directory\n\
-   2000   stupidlyverbose   Insane amounts of drivel\n\n\
-Debugging options are be mixed using bitwise-or.\n\
-Note that the meanings and values are subject to change.\n"),
+    if (printf(_(
+"%s debugging option, --debug=<octal> or -D<octal>:\n"
+"\n"
+" number  ref. in source   description\n"
+"      1   general           Generally helpful progress information\n"
+"      2   scripts           Invocation and status of maintainer scripts\n"
+"     10   eachfile          Output for each file processed\n"
+"    100   eachfiledetail    Lots of output for each file processed\n"
+"     20   conff             Output for each configuration file\n"
+"    200   conffdetail       Lots of output for each configuration file\n"
+"     40   depcon            Dependencies and conflicts\n"
+"    400   depcondetail      Lots of dependencies/conflicts output\n"
+"   1000   veryverbose       Lots of drivel about eg the dpkg/info directory\n"
+"   2000   stupidlyverbose   Insane amounts of drivel\n"
+"\n"
+"Debugging options are be mixed using bitwise-or.\n"
+"Note that the meanings and values are subject to change.\n"),
              DPKG) < 0) werr("stdout");
     exit(0);
   }
@@ -242,11 +267,11 @@ static void ignoredepends(const struct cmdinfo *cip, const char *value) {
   }
   p= copy;
   while (*p) {
-    pnerr= illegal_packagename(value,0);
+    pnerr= illegal_packagename(p,0);
     if (pnerr) ohshite(_("--ignore-depends requires a legal package name. "
-                       "`%.250s' is not; %s"), value, pnerr);
+                       "`%.250s' is not; %s"), p, pnerr);
     ni= m_malloc(sizeof(struct packageinlist));
-    ni->pkg= findpackage(value);
+    ni->pkg= findpackage(p);
     ni->next= ignoredependss;
     ignoredependss= ni;
     p+= strlen(p)+1;
@@ -289,37 +314,37 @@ static void setforce(const struct cmdinfo *cip, const char *value) {
   const struct forceinfo *fip;
 
   if (!strcmp(value,"help")) {
-    if (printf(_("%s forcing options - control behaviour when problems found:\n\
-  warn but continue:  --force-<thing>,<thing>,...\n\
-  stop with error:    --refuse-<thing>,<thing>,... | --no-force-<thing>,...\n\
- Forcing things:\n\
-  all                    Set all force options\n\
-  auto-select [*]        (De)select packages to install (remove) them\n\
-  downgrade [*]          Replace a package with a lower version\n\
-  configure-any          Configure any package which may help this one\n\
-  hold                   Process incidental packages even when on hold\n\
-  bad-path               PATH is missing important programs, problems likely\n\
-  not-root               Try to (de)install things even when not root\n\
-  overwrite              Overwrite a file from one package with another\n\
-  overwrite-diverted     Overwrite a diverted file with an undiverted version\n\
-  bad-verify             Install a package even if it fails authenticity check\n\
-  depends-version [!]    Turn dependency version problems into warnings\n\
-  depends [!]            Turn all dependency problems into warnings\n\
-  confnew [!]            Always use the new config files, don't prompt\n\
-  confold [!]            Always use the old config files, don't prompt\n\
-  confdef [!]            Use the default option for new config files if one\n\
-                         is available, don't prompt. If no default can be found,\n\
-                         you will be prompted unless one of the confold or\n\
-                         confnew options is also given\n\
-  confmiss [!]           Always install missing config files\n\
-  conflicts [!]          Allow installation of conflicting packages\n\
-  architecture [!]       Process even packages with wrong architecture\n\
-  overwrite-dir [!]      Overwrite one package's directory with another's file\n\
-  remove-reinstreq [!]   Remove packages which require installation\n\
-  remove-essential [!]   Remove an essential package\n\
-\n\
-WARNING - use of options marked [!] can seriously damage your installation.\n\
-Forcing options marked [*] are enabled by default.\n"),
+    if (printf(_(
+"%s forcing options - control behaviour when problems found:\n"
+"  warn but continue:  --force-<thing>,<thing>,...\n"
+"  stop with error:    --refuse-<thing>,<thing>,... | --no-force-<thing>,...\n"
+" Forcing things:\n"
+"  all [!]                Set all force options\n"
+"  downgrade [*]          Replace a package with a lower version\n"
+"  configure-any          Configure any package which may help this one\n"
+"  hold                   Process incidental packages even when on hold\n"
+"  bad-path               PATH is missing important programs, problems likely\n"
+"  not-root               Try to (de)install things even when not root\n"
+"  overwrite              Overwrite a file from one package with another\n"
+"  overwrite-diverted     Overwrite a diverted file with an undiverted version\n"
+"  bad-verify             Install a package even if it fails authenticity check\n"
+"  depends-version [!]    Turn dependency version problems into warnings\n"
+"  depends [!]            Turn all dependency problems into warnings\n"
+"  confnew [!]            Always use the new config files, don't prompt\n"
+"  confold [!]            Always use the old config files, don't prompt\n"
+"  confdef [!]            Use the default option for new config files if one\n"
+"                         is available, don't prompt. If no default can be found,\n"
+"                         you will be prompted unless one of the confold or\n"
+"                         confnew options is also given\n"
+"  confmiss [!]           Always install missing config files\n"
+"  conflicts [!]          Allow installation of conflicting packages\n"
+"  architecture [!]       Process even packages with wrong architecture\n"
+"  overwrite-dir [!]      Overwrite one package's directory with another's file\n"
+"  remove-reinstreq [!]   Remove packages which require installation\n"
+"  remove-essential [!]   Remove an essential package\n"
+"\n"
+"WARNING - use of options marked [!] can seriously damage your installation.\n"
+"Forcing options marked [*] are enabled by default.\n"),
                DPKG) < 0) werr("stdout");
     exit(0);
   }
@@ -329,14 +354,20 @@ Forcing options marked [*] are enabled by default.\n"),
     l= comma ? (int)(comma-value) : strlen(value);
     for (fip=forceinfos; fip->name; fip++)
       if (!strncmp(fip->name,value,l) && strlen(fip->name)==l) break;
-    if (!fip->name)
-      if(!strncmp("all",value,l))
+    if (!fip->name) {
+      if (strncmp("all", value, l) == 0) {
 	for (fip=forceinfos; fip->name; fip++)
-	  *fip->opt= cip->arg;
-      else
+	  if (fip->opt)
+	    *fip->opt= cip->arg;
+      } else
 	badusage(_("unknown force/refuse option `%.*s'"), l<250 ? (int)l : 250, value);
-    else
-      *fip->opt= cip->arg;
+    } else {
+      if (fip->opt)
+	*fip->opt= cip->arg;
+      else
+	fprintf(stderr, _("Warning: obsolete force/refuse option `%s'\n"),
+		fip->name);
+    }
     if (!comma) break;
     value= ++comma;
   }
@@ -370,6 +401,7 @@ static const struct cmdinfo cmdinfos[]= {
   ACTIONBACKEND( "status",                  's', DPKGQUERY),
   ACTION( "get-selections",                  0,  act_getselections,        getselections   ),
   ACTION( "set-selections",                  0,  act_setselections,        setselections   ),
+  ACTION( "clear-selections",                0,  act_clearselections,      clearselections ),
   ACTIONBACKEND( "print-avail",             'p', DPKGQUERY),
   ACTION( "update-avail",                    0,  act_avreplace,            updateavailable ),
   ACTION( "merge-avail",                     0,  act_avmerge,              updateavailable ),
@@ -433,27 +465,64 @@ static const struct cmdinfo cmdinfos[]= {
 };
 
 void execbackend(const char *const *argv) {
-  char **nargv;
-  int i, argc = 1;
+  char **nargv;   /* argv for backend command */
+  int i = 0;      /* index for nargv */
+  int offset = 0; /* offset for copying argv strings to nargv */
+  int argc = 1;   /* for nargv */
   const char *const *arg = argv;
-  while(*arg != 0) { arg++; argc++; }
-  nargv= malloc(sizeof(char *) * (argc + 2));
+  int pass_admindir = 0;
 
-  if (!nargv) ohshite(_("couldn't malloc in execbackend"));
-  nargv[0]= strdup(cipaction->parg);
-  if (!nargv[0]) ohshite(_("couldn't strdup in execbackend"));
-  nargv[1]= malloc(strlen(cipaction->olong) + 3);
-  if (!nargv[1]) ohshite(_("couldn't malloc in execbackend"));
-  strcpy(nargv[1], "--");
-  strcat(nargv[1], cipaction->olong);
-  for (i= 2; i <= argc; i++) {
-    nargv[i]= strdup(argv[i-2]);
-    if (!nargv[i]) ohshite(_("couldn't strdup in execbackend"));
+  while (*arg != 0) {
+    arg++; argc++;
   }
-  nargv[i]= 0;
+
+  /*
+   * Special case: dpkg-query takes the --admindir option, and if dpkg itself
+   * was given a different admin directory, we need to pass it along to it.
+   */
+  if (strcmp(cipaction->parg, DPKGQUERY) == 0 &&
+      strcmp(admindir, ADMINDIR) != 0) {
+    argc++;
+    pass_admindir = 1;
+  }
+
+  nargv = malloc(sizeof(char *) * (argc + 2));
+  if (!nargv)
+    ohshite(_("couldn't malloc in execbackend"));
+
+  nargv[i] = strdup(cipaction->parg);
+  if (!nargv[i])
+    ohshite(_("couldn't strdup in execbackend"));
+  i++, offset++;
+
+  if (pass_admindir) {
+    nargv[i] = malloc((strlen("--admindir=") + strlen(admindir) + 1));
+    if (!nargv[i])
+      ohshite(_("couldn't malloc in execbackend"));
+
+    sprintf(nargv[i], "--admindir=%s", admindir);
+    i++, offset++;
+  }
+
+  nargv[i] = malloc(2 + strlen(cipaction->olong) + 1);
+  if (!nargv[i])
+    ohshite(_("couldn't malloc in execbackend"));
+  strcpy(nargv[i], "--");
+  strcat(nargv[i], cipaction->olong);
+  i++, offset++;
+
+  /* Copy arguments from argv to nargv. */
+  for (; i <= argc; i++) {
+    nargv[i] = strdup(argv[i - offset]);
+    if (!nargv[i])
+      ohshite(_("couldn't strdup in execbackend"));
+  }
+  nargv[i] = 0;
+
   execvp(cipaction->parg, nargv);
-  ohshite(_("failed to exec %s"),(char *)cipaction->parg);
+  ohshite(_("failed to exec %s"), (char *)cipaction->parg);
 }
+
 void commandfd(const char *const *argv) {
   jmp_buf ejbuf;
   struct varbuf linevb;
@@ -464,8 +533,11 @@ void commandfd(const char *const *argv) {
   int c, lno, infd, i, skipchar;
   static void (*actionfunction)(const char *const *argv);
 
-  if ((pipein= *argv++) == NULL) badusage(_("--command-fd takes 1 argument, not 0"));
-  if (*argv) badusage(_("--command-fd only takes 1 argument"));
+  pipein = *argv++;
+  if (pipein == NULL)
+    badusage(_("--command-fd takes one argument, not zero"));
+  if (*argv)
+    badusage(_("--command-fd only takes one argument"));
   if ((infd= strtol(pipein, (char **)NULL, 10)) == -1)
     ohshite(_("invalid number for --command-fd"));
   if ((in= fdopen(infd, "r")) == NULL)
@@ -551,9 +623,7 @@ printf("line=`%*s'\n",(int)linevb.used,linevb.buf);
 int main(int argc, const char *const *argv) {
   jmp_buf ejbuf;
   static void (*actionfunction)(const char *const *argv);
-  char *archp = getenv("CROSS_ARCH");
 
-  architecture = strdup(archp ? archp : ARCHITECTURE);
   standard_startup(&ejbuf, argc, &argv, DPKG, 1, cmdinfos);
   if (!cipaction) badusage(_("need an action option"));
 

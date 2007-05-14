@@ -24,20 +24,36 @@
 # don't put that in for production.
 # use strict;
 
+my $dpkglibdir = "."; # This line modified by Makefile
+push(@INC,$dpkglibdir);
+require 'dpkg-gettext.pl';
+textdomain("dpkg");
+
+($0) = $0 =~ m:.*/(.+):;
+
 my $version = '1.1.6'; # This line modified by Makefile
 sub version {
-    print STDERR <<END;
-Debian cleanup-info $version.  Copyright (C)1996 Kim-Minh Kaplan.
-This is free software; see the GNU General Public Licence
-version 2 or later for copying conditions.  There is NO warranty.
-END
+    printf _g("Debian %s version %s.\n"), $0, $version;
+
+    printf _g("
+Copyright (C) 1996 Kim-Minh Kaplan.");
+
+    printf _g("
+This is free software; see the GNU General Public Licence version 2 or
+later for copying conditions. There is NO warranty.
+");
 }
 
 sub usage {
-    print STDERR <<'EOF';
-usage: cleanup-info [--version] [--help] [--unsafe] [--] [<dirname>]
-Warning: the ``--unsafe'' option may garble an otherwise correct file
-EOF
+    printf _g(
+"Usage: %s [<option> ...] [--] [<dirname>]
+
+Options:
+  --unsafe     set some additional possibly useful options.
+               warning: this option may garble an otherwise correct file.
+  --help       show this help message.
+  --version    show the version.
+"), $0;
 }
 
 my $infodir = '/usr/info';
@@ -47,8 +63,9 @@ my $name= $&;
 
 sub ulquit {
     unlink "$infodir/dir.lock"
-	or warn "$name: warning - unable to unlock $infodir/dir: $!\n";
-    die $_[0];
+	or warn sprintf(_g("%s: warning - unable to unlock %s: %s"),
+	                $name, "$infodir/dir", $!)."\n";
+    die "$name: $_[0]";
 }
 
 while (scalar @ARGV > 0 && $ARGV[0] =~ /^--/) {
@@ -66,7 +83,7 @@ while (scalar @ARGV > 0 && $ARGV[0] =~ /^--/) {
 	$unsafe=1;
 	next;
     };
-    print STDERR "$name: unknown option \`$_'\n";
+    printf STDERR _g("%s: unknown option \`%s'")."\n", $name, $_;
     usage;
     exit 1;
 }
@@ -74,19 +91,22 @@ while (scalar @ARGV > 0 && $ARGV[0] =~ /^--/) {
 if (scalar @ARGV > 0) {
     $infodir = shift;
     if (scalar @ARGV > 0) {
-	print STDERR "$name: too many arguments\n";
+	printf STDERR _g("%s: too many arguments")."\n", $name;
 	usage;
 	exit 1;
     }
 }
 
 if (!link "$infodir/dir", "$infodir/dir.lock") {
-    die "$name: failed to lock dir for editing! $!\n".
-        ($! =~ /exist/i ? "try deleting $infodir/dir.lock\n" : '');
+    die sprintf(_g("%s: failed to lock dir for editing! %s"),
+                $name, $!)."\n".
+        ($! =~ /exist/i ? sprintf(_g("try deleting %s"),
+                                  "$infodir/dir.lock")."\n" : '');
 }
-open OLD, "$infodir/dir"  or ulquit "$name: can't open $infodir/dir: $!\n";
+open OLD, "$infodir/dir"
+    or ulquit sprintf(_g("unable to open %s: %s"), "$infodir/dir", $!)."\n";
 open OUT, ">$infodir/dir.new"
-    or ulquit "$name can't create $infodir/dir.new: $!\n";
+    or ulquit sprintf(_g("unable to create %s: %s"), "$infodir/dir.new", $!)."\n";
 
 my (%sections, @section_list, $lastline);
 my $section="Miscellaneous";	# default section
@@ -97,7 +117,8 @@ while (<OLD>) {				# dump the non entries part
     last if (/$waitfor/oi);
     if (defined $lastline) {
 	print OUT $lastline
-	    or ulquit "$name: error writing $infodir/dir.new: $!\n";
+	    or ulquit sprintf(_g("unable to write %s: %s"),
+				 "$infodir/dir.new", $!)."\n";
     }
     $lastline = $_;
 };
@@ -136,20 +157,25 @@ foreach (<OLD>) {		# collect sections
     }
 }
 
-eof OLD or ulquit "$name: read $infodir/dir: $!\n";
-close OLD or ulquit "$name: close $infodir/dir after read: $!\n";
+eof OLD or ulquit sprintf(_g("unable to read %s: %s"), "$infodir/dir", $!)."\n";
+close OLD or ulquit sprintf(_g("unable to close %s after read: %s"),
+                               "$infodir/dir", $!)."\n";
 
 print OUT @sections{@section_list};
-close OUT or ulquit "$name: error closing $infodir/dir.new: $!\n";
+close OUT or ulquit sprintf(_g("unable to close %s: %s"),
+                               "$infodir/dir.new", $!)."\n";
 
 # install clean version
 unlink "$infodir/dir.old";
 link "$infodir/dir", "$infodir/dir.old"
-    or ulquit "$name: can't backup old $infodir/dir, giving up: $!\n";
+    or ulquit sprintf(_g("unable to backup old %s, giving up: %s"),
+                         "$infodir/dir", $!)."\n";
 rename "$infodir/dir.new", "$infodir/dir"
-    or ulquit "$name: failed to install $infodir/dir; I'll leave it as $infodir/dir.new: $!\n";
+    or ulquit sprintf(_g("failed to install %s; it will be left as %s: %s"),
+                         "$infodir/dir", "$infodir/dir.new", $!)."\n";
 
 unlink "$infodir/dir.lock"
-    or die "$name: failed to unlock $infodir/dir: $!\n";
+    or die sprintf(_g("%s: unable to unlock %s: %s"),
+                   $name, "$infodir/dir", $!)."\n";
 
 exit 0;

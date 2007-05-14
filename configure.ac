@@ -1,9 +1,10 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT([dpkg], [1.13.11], [debian-dpkg@lists.debian.org])
+AC_INIT([dpkg], [1.13.25], [debian-dpkg@lists.debian.org])
 AC_CONFIG_SRCDIR([lib/dpkg.h])
 AC_CONFIG_MACRO_DIR([m4])
+AC_CONFIG_AUX_DIR([config])
 
 AC_CANONICAL_SYSTEM
 AC_GNU_SOURCE
@@ -11,7 +12,7 @@ DPKG_ARCHITECTURE
 
 AM_INIT_AUTOMAKE([1.8 gnu])
 
-AM_GNU_GETTEXT_VERSION(0.14.1)
+AM_GNU_GETTEXT_VERSION(0.14.5)
 AM_GNU_GETTEXT()
 
 # Allow compilation without dselect
@@ -102,6 +103,8 @@ AC_CONFIG_FILES([ Makefile
 		  dpkg-deb/Makefile
 		  dpkg-split/Makefile
 		  dselect/Makefile
+		  dselect/methods/Makefile
+		  dselect/po/Makefile.in
 		  getopt/Makefile
 		  intl/Makefile
 		  lib/Makefile
@@ -110,14 +113,17 @@ AC_CONFIG_FILES([ Makefile
 		  man/de/Makefile
 		  man/es/Makefile
 		  man/fr/Makefile
+		  man/hu/Makefile
 		  man/ja/Makefile
+		  man/pl/Makefile
 		  man/pt_BR/Makefile
 		  man/ru/Makefile
 		  man/sv/Makefile
-		  methods/Makefile
+		  man/po4a/Makefile
 		  origins/Makefile
 		  po/Makefile.in
 		  scripts/Makefile
+		  scripts/po/Makefile.in
 		  src/Makefile
 		  utils/Makefile ])
 AC_CONFIG_HEADERS([config.h])

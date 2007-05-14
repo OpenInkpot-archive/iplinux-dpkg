@@ -123,7 +123,6 @@ static int stop = 0;
 static int background = 0;
 static int mpidfile = 0;
 static int signal_nr = 15;
-static const char *signal_str = NULL;
 static int user_id = -1;
 static int runas_uid = -1;
 static int runas_gid = -1;
@@ -137,9 +136,9 @@ static char *execname = NULL;
 static char *startas = NULL;
 static const char *pidfile = NULL;
 static char what_stop[1024];
-static const char *schedule_str = NULL;
 static const char *progname = "";
 static int nicelevel = 0;
+static int umask_value = -1;
 
 static struct stat exec_stat;
 #if defined(OSHURD)
@@ -282,27 +281,32 @@ static void
 do_help(void)
 {
 	printf(
-"start-stop-daemon VERSION for Debian - small and fast C version written by\n"
+"start-stop-daemon %s for Debian - small and fast C version written by\n"
 "Marek Michalkiewicz <marekm@i17linuxb.ists.pwr.wroc.pl>, public domain.\n"
 "\n"
-"Usage:\n"
-"  start-stop-daemon -S|--start options ... -- arguments ...\n"
-"  start-stop-daemon -K|--stop options ...\n"
-"  start-stop-daemon -H|--help\n"
-"  start-stop-daemon -V|--version\n"
+"Usage: start-stop-daemon [<option> ...] <command>\n"
+"\n"
+"Commands:\n"
+"  -S|--start -- <argument> ...  start a program and pass <arguments> to it\n"
+"  -K|--stop                     stop a program\n"
+"  -H|--help                     print help information\n"
+"  -V|--version                  print version\n"
 "\n"
 "Options (at least one of --exec|--pidfile|--user is required):\n"
 "  -x|--exec <executable>        program to start/check if it is running\n"
 "  -p|--pidfile <pid-file>       pid file to check\n"
 "  -c|--chuid <name|uid[:group|gid]>\n"
-"  		change to this user/group before starting process\n"
+"                                change to this user/group before starting\n"
+"                                  process\n"
 "  -u|--user <username>|<uid>    stop processes owned by this user\n"
 "  -g|--group <group|gid>        run process as this group\n"
 "  -n|--name <process-name>      stop processes with this name\n"
 "  -s|--signal <signal>          signal to send (default TERM)\n"
 "  -a|--startas <pathname>       program to start (default is <executable>)\n"
-"  -C|--chdir <directory>        Change to <directory>(default is /)\n"
+"  -r|--chroot <directory>       chroot to <directory> before starting\n"
+"  -d|--chdir <directory>        change to <directory> (default is /)\n"
 "  -N|--nicelevel <incr>         add incr to the process's nice level\n"
+"  -k|--umask <mask>             change the umask to <mask> before starting\n"
 "  -b|--background               force the process to detach\n"
 "  -m|--make-pidfile             create the pidfile before starting\n"
 "  -R|--retry <schedule>         check whether processes die, and retry\n"
@@ -310,6 +314,7 @@ do_help(void)
 "  -o|--oknodo                   exit status 0 (not 1) if nothing done\n"
 "  -q|--quiet                    be more quiet\n"
 "  -v|--verbose                  be more verbose\n"
+"\n"
 "Retry <schedule> is <item>|/<item>/... where <item> is one of\n"
 " -<signal-num>|[-]<signal-name>  send that signal\n"
 " <timeout>                       wait that many seconds\n"
@@ -317,7 +322,8 @@ do_help(void)
 "or <schedule> may be just <timeout>, meaning <signal>/<timeout>/KILL/<timeout>\n"
 "\n"
 "Exit status:  0 = done      1 = nothing done (=> 0 if --oknodo)\n"
-"              3 = trouble   2 = with --retry, processes wouldn't die\n");
+"              3 = trouble   2 = with --retry, processes wouldn't die\n",
+	       VERSION);
 }
 
 
@@ -386,6 +392,20 @@ static int parse_signal(const char *signal_str, int *signal_nr)
 		}
 	}
 	return -1;
+}
+
+static int
+parse_umask(const char *string, int *value_r)
+{
+	if (!string[0])
+		return -1;
+
+	errno = 0;
+	*value_r = strtoul(string, NULL, 0);
+	if (errno)
+		return -1;
+	else
+		return 0;
 }
 
 static void
@@ -487,16 +507,20 @@ parse_options(int argc, char * const *argv)
 		{ "exec",	  1, NULL, 'x'},
 		{ "chuid",	  1, NULL, 'c'},
 		{ "nicelevel",	  1, NULL, 'N'},
+		{ "umask",	  1, NULL, 'k'},
 		{ "background",   0, NULL, 'b'},
 		{ "make-pidfile", 0, NULL, 'm'},
  		{ "retry",        1, NULL, 'R'},
 		{ "chdir",        1, NULL, 'd'},
 		{ NULL,		0, NULL, 0}
 	};
+	const char *umask_str = NULL;
+	const char *signal_str = NULL;
+	const char *schedule_str = NULL;
 	int c;
 
 	for (;;) {
-		c = getopt_long(argc, argv, "HKSVa:n:op:qr:s:tu:vx:c:N:bmR:g:d:",
+		c = getopt_long(argc, argv, "HKSVa:n:op:qr:s:tu:vx:c:N:k:bmR:g:d:",
 				longopts, (int *) 0);
 		if (c == -1)
 			break;
@@ -559,6 +583,9 @@ parse_options(int argc, char * const *argv)
 		case 'N':  /* --nice */
 			nicelevel = atoi(optarg);
 			break;
+		case 'k':  /* --umask <mask> */
+			umask_str = optarg;
+			break;
 		case 'b':  /* --background */
 			background = 1;
 			break;
@@ -586,6 +613,11 @@ parse_options(int argc, char * const *argv)
 		parse_schedule(schedule_str);
 	}
 
+	if (umask_str != NULL) {
+		if (parse_umask(umask_str, &umask_value) != 0)
+			badusage("umask value must be a positive number");
+	}
+
 	if (start == stop)
 		badusage("need one of --start or --stop");
 
@@ -610,12 +642,24 @@ parse_options(int argc, char * const *argv)
 static int
 pid_is_exec(pid_t pid, const struct stat *esb)
 {
+	char lname[32];
+	char lcontents[_POSIX_PATH_MAX];
+	const char deleted[] = " (deleted)";
+	int nread;
 	struct stat sb;
-	char buf[32];
 
-	sprintf(buf, "/proc/%d/exe", pid);
-	if (stat(buf, &sb) != 0)
+	sprintf(lname, "/proc/%d/exe", pid);
+	nread = readlink(lname, lcontents, sizeof(lcontents));
+	if (nread == -1)
 		return 0;
+
+	lcontents[nread] = '\0';
+	if (strcmp(lcontents + nread - strlen(deleted), deleted) == 0)
+		lcontents[nread - strlen(deleted)] = '\0';
+
+	if (stat(lcontents, &sb) != 0)
+		return 0;
+
 	return (sb.st_dev == esb->st_dev && sb.st_ino == esb->st_ino);
 }
 
@@ -1180,8 +1224,25 @@ main(int argc, char **argv)
 	argc -= optind;
 	argv += optind;
 
-	if (execname && stat(execname, &exec_stat))
-		fatal("stat %s: %s", execname, strerror(errno));
+	if (execname) {
+		char *fullexecname;
+
+		if (changeroot) {
+			int fullexecname_len = strlen(changeroot) + 1 +
+					       strlen(execname) + 1;
+
+			fullexecname = xmalloc(fullexecname_len);
+			snprintf(fullexecname, fullexecname_len, "%s/%s",
+				 changeroot, execname);
+		} else
+			fullexecname = execname;
+
+		if (stat(fullexecname, &exec_stat))
+			fatal("stat %s: %s", fullexecname, strerror(errno));
+
+		if (fullexecname != execname)
+			free(fullexecname);
+	}
 
 	if (userspec && sscanf(userspec, "%d", &user_id) != 1) {
 		struct passwd *pw;
@@ -1208,6 +1269,8 @@ main(int argc, char **argv)
 			changegroup = ""; /* just empty */
 			runas_gid = pw->pw_gid;
 		}
+		if (access(pw->pw_dir, F_OK) == 0)
+			setenv("HOME", pw->pw_dir, 1);
 	}
 
 	if (stop) {
@@ -1269,6 +1332,8 @@ main(int argc, char **argv)
 			fatal("Unable to alter nice level by %i: %s", nicelevel,
 				strerror(errno));
 	}
+	if (umask_value >= 0)
+		umask(umask_value);
 	if (mpidfile && pidfile != NULL) { /* user wants _us_ to make the pidfile :) */
 		FILE *pidf = fopen(pidfile, "w");
 		pid_t pidt = getpid();
@@ -1301,7 +1366,8 @@ main(int argc, char **argv)
 		ioctl(tty_fd, TIOCNOTTY, 0);
 		close(tty_fd);
 #endif
-		umask(022); /* set a default for dumb programs */
+		if (umask_value < 0)
+			umask(022); /* set a default for dumb programs */
 		dup2(devnull_fd,0); /* stdin */
 		dup2(devnull_fd,1); /* stdout */
 		dup2(devnull_fd,2); /* stderr */

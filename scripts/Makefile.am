@@ -1,5 +1,7 @@
 ## Process this file with automake to produce Makefile.in
 
+SUBDIRS = po
+
 bin_SCRIPTS = \
 	822-date \
 	dpkg-architecture \
@@ -53,7 +55,8 @@ CLEANFILES = \
 
 
 dist_pkglib_SCRIPTS = \
-	controllib.pl
+	controllib.pl \
+	dpkg-gettext.pl
 
 
 do_perl_subst = sed -e "s:^\#![:space:]*/usr/bin/perl:\#!$(PERL):" \

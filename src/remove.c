@@ -240,11 +240,17 @@ static void removal_bulk_remove_files(
          * package which uses it.  Other files should only be listed
          * in this package (but we don't check).
          */
-        if (isdirectoryinuse(namenode,pkg)) continue;
+	if (hasdirectoryconffiles(namenode,pkg)) {
+	  push_leftover(&leftover,namenode);
+	  continue;
+	}
+	if (isdirectoryinuse(namenode,pkg)) continue;
       }
       debug(dbg_eachfiledetail, "removal_bulk removing `%s'", fnvb.buf);
       if (!rmdir(fnvb.buf) || errno == ENOENT || errno == ELOOP) continue;
       if (errno == ENOTEMPTY) {
+	debug(dbg_eachfiledetail, "removal_bulk `%s' was not empty, will try again later",
+	      fnvb.buf);
         push_leftover(&leftover,namenode);
         continue;
       } else if (errno == EBUSY || errno == EPERM) {
@@ -348,6 +354,10 @@ static void removal_bulk_remove_leftover_dirs(struct pkginfo *pkg) {
        * package which uses it.  Other files should only be listed
        * in this package (but we don't check).
        */
+      if (hasdirectoryconffiles(namenode,pkg)) {
+	push_leftover(&leftover,namenode);
+	continue;
+      }
       if (isdirectoryinuse(namenode,pkg)) continue;
     }
 
@@ -429,6 +439,11 @@ static void removal_bulk_remove_configfiles(struct pkginfo *pkg) {
     
     for (conff= pkg->installed.conffiles; conff; conff= conff->next) {
     static struct varbuf fnvb, removevb;
+      if (conff->obsolete) {
+	debug(dbg_conffdetail, "removal_bulk conffile obsolete %s",
+	      conff->name);
+	continue;
+      }
       varbufreset(&fnvb);
       r= conffderef(pkg, &fnvb, conff->name);
       debug(dbg_conffdetail, "removal_bulk conffile `%s' (= `%s')",
@@ -574,6 +589,8 @@ void removal_bulk(struct pkginfo *pkg) {
     pkg->installed.essential= 0;
     pkg->installed.description= pkg->installed.maintainer= 0;
     pkg->installed.source= pkg->installed.installedsize= 0;
+    pkg->installed.origin= pkg->installed.bugs= 0;
+    pkg->installed.architecture= 0;
     blankversion(&pkg->installed.version);
     pkg->installed.arbs= 0;
   }

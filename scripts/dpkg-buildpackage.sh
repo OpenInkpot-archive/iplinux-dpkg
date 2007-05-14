@@ -5,50 +5,60 @@ set -e
 version="1.10.10"; # This line modified by Makefile
 
 progname="`basename \"$0\"`"
-usageversion () {
-	cat >&2 <<END
-Debian dpkg-buildpackage $version.  
+
+showversion () {
+	echo "Debian $progname version $version."
+
+	echo "
 Copyright (C) 1996 Ian Jackson.
 Copyright (C) 2000 Wichert Akkerman
-This is free software; see the GNU General Public Licence version 2
-or later for copying conditions.  There is NO warranty.
+This is free software; see the GNU General Public Licence version 2 or
+later for copying conditions. There is NO warranty."
+}
 
-Usage: dpkg-buildpackage [options]
-Options: -r<gain-root-command>
-         -p<sign-command>
-	 -d            do not check build dependencies and conflicts
-	 -D            check build dependencies and conflicts
-	 -k<keyid>     the key to use for signing
-         -sgpg         the sign-command is called like GPG
-         -spgp         the sign-command is called like PGP 
-         -us           unsigned source
-         -uc           unsigned changes
-         -a<arch>      Debian architecture we build for (implies -d)
-         -b            binary-only, do not build source } also passed to
-         -B            binary-only, no arch-indep files } dpkg-genchanges
-         -S            source only, no binary files     } 
-         -t<system>    set GNU system type  } passed to dpkg-architecture
-         -v<version>   changes since version <version>      }
-         -m<maint>     maintainer for package is <maint>    } 
-         -e<maint>     maintainer for release is <maint>    } only passed
-         -C<descfile>  changes are described in <descfile>  }  to dpkg-
-         -si (default) src includes orig for rev. 0 or 1    } genchanges
-         -sa           uploaded src always includes orig    }
-         -sd           uploaded src is diff and .dsc only   }
-         -nc           do not clean source tree (implies -b)
-         -tc           clean source tree when finished
-         -ap           add pause before starting signature process
-         -h            print this message
-         -W            Turn certain errors into warnings.      } passed to
-         -E            When -W is turned on, -E turned it off. } dpkg-source
-         -i[<regex>]   ignore diffs of files matching regex    } only passed
-         -I<filename>  filter out files when building tarballs } to dpkg-source
+usage () {
+	cat <<END
+Usage: $progname [<options> ...]
+
+Options:
+  -r<gain-root-command>
+  -p<sign-command>
+  -d             do not check build dependencies and conflicts.
+  -D             check build dependencies and conflicts.
+  -k<keyid>      the key to use for signing.
+  -sgpg          the sign-command is called like GPG.
+  -spgp          the sign-command is called like PGP.
+  -us            unsigned source.
+  -uc            unsigned changes.
+  -a<arch>       Debian architecture we build for (implies -d).
+  -b             binary-only, do not build source. } also passed to
+  -B             binary-only, no arch-indep files. } dpkg-genchanges
+  -S             source only, no binary files.     }
+  -t<system>     set GNU system type.           } passed to dpkg-architecture
+  -v<version>    changes since version <version>.      }
+  -m<maint>      maintainer for package is <maint>.    }
+  -e<maint>      maintainer for release is <maint>.    } only passed
+  -C<descfile>   changes are described in <descfile>.  } to dpkg-genchangs
+  -si (default)  src includes orig for rev. 0 or 1.    }
+  -sa            uploaded src always includes orig.    }
+  -sd            uploaded src is diff and .dsc only.   }
+  -sn            force Debian native source format.      } only passed
+  -s[sAkurKUR]   see dpkg-source for explanation.        } to dpkg-source
+  -nc            do not clean source tree (implies -b).
+  -tc            clean source tree when finished.
+  -ap            add pause before starting signature process.
+  -W             turn certain errors into warnings.       } passed to
+  -E             when -W is turned on, -E turned it off.  } dpkg-source
+  -i[<regex>]    ignore diffs of files matching regex.    } only passed
+  -I<filename>   filter out files when building tarballs. } to dpkg-source
+  -h, --help     show this help message.
+      --version  show the version.
 END
 }
 
 rootcommand=''
 signcommand=""
-if ( [ -e $GNUPGHOME/secring.gpg ] || [ -e $HOME/.gnupg/secring.gpg ] ) && \
+if (( [ -n "$GNUPGHOME" ] && [ -e "$GNUPGHOME" ] ) || [ -e "$HOME/.gnupg" ] ) && \
 		command -v gpg > /dev/null 2>&1; then
 	signcommand=gpg
 elif command -v pgp > /dev/null 2>&1 ; then
@@ -62,7 +72,7 @@ checkbuilddep=true
 checkbuilddep_args=''
 binarytarget=binary
 sourcestyle=''
-version=''
+changesversion=''
 since=''
 maint=''
 desc=''
@@ -75,7 +85,10 @@ while [ $# != 0 ]
 do
 	value="`echo x\"$1\" | sed -e 's/^x-.//'`"
 	case "$1" in
-	-h)	usageversion; exit 0 ;;
+	-h|--help)
+		usage; exit 0 ;;
+	--version)
+		showversion; exit 0 ;;
 	-r*)	rootcommand="$value" ;;
 	-p*)	signcommand="$value" ;;
 	-k*)	signkey="$value" ;;
@@ -90,6 +103,7 @@ do
 	-si)	sourcestyle=-si ;;
 	-sa)	sourcestyle=-sa ;;
 	-sd)	sourcestyle=-sd ;;
+	-s[nsAkurKUR])    passopts="$passopts $1";; # passed to dpkg-source
         -i*)    diffignore=$1;;
 	-I*)	tarignore="$tarignore $1";;
 	-tc)	cleansource=true ;;
@@ -106,9 +120,9 @@ do
 	-e*)	changedby="$value" ;;
 	-C*)	desc="$value" ;;
 	-W)	warnable_error=1; passopts="$passopts -W";;
-	-E)	warnable_error=0; passopts="$passopts -E";;	
+	-E)	warnable_error=0; passopts="$passopts -E";;
 	*)	echo >&2 "$progname: unknown option or argument $1"
-		usageversion; exit 2 ;;
+		usage; exit 2 ;;
 	esac
 	shift
 done
@@ -120,14 +134,12 @@ fi
 
 if test -n "$forcesigninterface" ; then
   signinterface=$forcesigninterface
-if [ "$signinterface" != "gpg" ] && [ "$signinterface" != "pgp" ] ; then
-	echo >&2 "$progname: invalid sign interface specified"
-	exit 1
-fi
 else
   signinterface=$signcommand
 fi
-
+if [ -n "$signcommand" ] && [ "$signinterface" != "gpg" ] && [ "$signinterface" != "pgp" ] ; then
+    echo >&2 "$progname: unknown sign command, assuming pgp style interface"
+fi
 
 mustsetvar () {
 	if [ "x$2" = x ]; then
@@ -142,7 +154,7 @@ mustsetvar () {
 curd="`pwd`"
 dirn="`basename \"$curd\"`"
 mustsetvar package "`dpkg-parsechangelog | sed -n 's/^Source: //p'`" "source package is"
-mustsetvar version "`dpkg-parsechangelog | sed -n 's/^Version: //p'`" "source version is"
+mustsetvar changesversion "`dpkg-parsechangelog | sed -n 's/^Version: //p'`" "source version is"
 if [ -n "$changedby" ]; then maintainer="$changedby";
 elif [ -n "$maint" ]; then maintainer="$maint";
 else mustsetvar maintainer "`dpkg-parsechangelog | sed -n 's/^Maintainer: //p'`" "source changed by"; fi
@@ -153,7 +165,7 @@ if [ x$sourceonly = x ]; then
 else
 	arch=source
 fi
-sversion=`echo "$version" | perl -pe 's/^\d+://'`
+mustsetvar sversion "`echo \"$changesversion\" | perl -pe 's/^\d+://'`" "source version without epoch"
 pv="${package}_${sversion}"
 pva="${package}_${sversion}_${arch}"
 
@@ -166,8 +178,14 @@ signfile () {
 		$signcommand -u "${signkey:-$maintainer}" +clearsig=on -fast <"../$1" \
 			>"../$1.asc"
 	fi
+	status=$?
+	if [ $status -eq 0 ]; then
+		mv -- "../$1.asc" "../$1"
+	else
+		/bin/rm -f "../$1.asc"
+	fi
 	echo
-	mv -- "../$1.asc" "../$1"
+	return $status
 }
 
 withecho () {
@@ -205,8 +223,12 @@ if [ "$usepause" = "true" ] && \
     read dummy_stuff
 fi
 
+signerrors=
 if [ x$binaryonly = x ]; then
-        $signsource "$pv.dsc"
+	if ! $signsource "$pv.dsc"; then
+		signerrors="(WARNING: Failed to sign .dsc and .changes file)"
+		signchanges=:
+	fi
 fi
 chg=../"$pva.changes"
 withecho dpkg-genchanges "$@" >"$chg"
@@ -242,10 +264,16 @@ else
 	fi
 fi
 
-$signchanges "$pva.changes"
+if ! $signchanges "$pva.changes"; then
+	signerrors="(WARNING: Failed to sign .changes file)"
+fi
 
 if $cleansource; then
 	withecho $rootcommand debian/rules clean
 fi
 
 echo "dpkg-buildpackage: $srcmsg"
+if [ -n "$signerrors" ]; then
+	echo >&2 $signerrors
+	exit 1
+fi

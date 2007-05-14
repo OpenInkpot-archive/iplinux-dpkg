@@ -40,3 +40,4 @@ CLEANFILES = $(dpkg_source_aliases)
 $(dpkg_source_aliases):
 	echo ".so man1/dpkg-source.1" > $@
 	chmod 644 $@
+

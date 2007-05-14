@@ -53,7 +53,8 @@ enum action { act_unset, act_install, act_unpack, act_avail, act_configure,
               act_unpackchk, act_status, act_searchfiles, act_audit, act_listfiles,
               act_assertpredep, act_printarch, act_predeppackage, act_cmpversions,
               act_printinstarch, act_compareversions, act_printavail, act_avclear,
-              act_forgetold, act_getselections, act_setselections,
+              act_forgetold,
+              act_getselections, act_setselections, act_clearselections,
               act_assertepoch, act_assertlongfilenames, act_assertmulticonrep,
 	      act_commandfd };
 
@@ -61,9 +62,11 @@ enum conffopt {
   cfof_prompt        =     001,
   cfof_keep          =     002,
   cfof_install       =     004,
-  cfof_backup        =    0100,
-  cfof_newconff      =    0200,
-  cfof_isnew         =    0400,
+  cfof_backup        =   00100,
+  cfof_newconff      =   00200,
+  cfof_isnew         =   00400,
+  cfof_isold         =   01000,
+  cfof_userrmd       =   02000,
   cfom_main          =     007,
   cfo_keep           =   cfof_keep,
   cfo_prompt_keep    =   cfof_keep | cfof_prompt,
@@ -83,7 +86,7 @@ extern int f_autodeconf, f_largemem, f_nodebsig;
 extern unsigned long f_debug;
 extern int fc_downgrade, fc_configureany, fc_hold, fc_removereinstreq, fc_overwrite;
 extern int fc_removeessential, fc_conflicts, fc_depends, fc_dependsversion;
-extern int fc_autoselect, fc_badpath, fc_overwritediverted, fc_architecture;
+extern int fc_badpath, fc_overwritediverted, fc_architecture;
 extern int fc_nonroot, fc_overwritedir, fc_conff_new, fc_conff_miss;
 extern int fc_conff_old, fc_conff_def;
 extern int fc_badverify;
@@ -92,7 +95,7 @@ extern int errabort;
 extern const char *admindir;
 extern const char *instdir;
 extern struct packageinlist *ignoredependss;
-extern char *architecture;
+extern const char architecture[];
 
 /* from filesdb.c */
 
@@ -103,6 +106,8 @@ void filesdbinit(void);
 void archivefiles(const char *const *argv);
 void process_archive(const char *filename);
 int wanttoinstall(struct pkginfo *pkg, const struct versionrevision *ver, int saywhy);
+struct fileinlist *newconff_append(struct fileinlist ***newconffileslastp_io,
+				   struct filenamenode *namenode);
 
 /* from update.c */
 
@@ -135,6 +140,7 @@ int pkglistqsortcmp(const void *a, const void *b);
 
 void getselections(const char *const *argv);
 void setselections(const char *const *argv);
+void clearselections(const char *const *argv);
 
 /* from packages.c, remove.c and configure.c */
 
@@ -179,7 +185,9 @@ void ensure_package_clientdata(struct pkginfo *pkg);
 const char *pkgadminfile(struct pkginfo *pkg, const char *whichfile);
 void oldconffsetflags(const struct conffile *searchconff);
 void ensure_pathname_nonexisting(const char *pathname);
-int chmodsafe_unlink(const char *pathname); /* chmod 600, then unlink */
+int chmodsafe_unlink(const char *pathname, const char **failed);
+int chmodsafe_unlink_statted(const char *pathname, const struct stat *stab,
+			     const char **failed);
 void checkpath(void);
 struct filenamenode *namenodetouse(struct filenamenode*, struct pkginfo*);
 
@@ -195,6 +203,7 @@ int maintainer_script_alternative(struct pkginfo *pkg,
                                   const char *ifok, const char *iffallback);
 void clear_istobes(void);
 int isdirectoryinuse(struct filenamenode *namenode, struct pkginfo *pkg);
+int hasdirectoryconffiles(struct filenamenode *namenode, struct pkginfo *pkg);
 
 enum debugflags {
   dbg_general=           00001,

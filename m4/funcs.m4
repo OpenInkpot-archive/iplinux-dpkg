@@ -11,13 +11,7 @@ va_copy (v1, v2);
 exit (0);
 }],
 	[dpkg_cv_va_copy=yes],
-	[dpkg_cv_va_copy=no],
-[AC_TRY_CPP(
-[#include <stdarg.h>
-va_copy(a,b)
-}],
-	[dpkg_cv_va_copy=yes],
-	[dpkg_cv_va_copy=no])])])
+	[dpkg_cv_va_copy=no])])
 AS_IF([test "x$dpkg_cv_va_copy" = "xyes"],
 	[AC_DEFINE([HAVE_VA_COPY], 1,
 		  [Define to 1 if the `va_copy' macro exists])],

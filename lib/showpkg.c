@@ -230,8 +230,6 @@ void show1package(const struct lstitem* head, struct pkginfo *pkg) {
 			for (fip=fieldinfos; fip->name; fip++) 
 				if (strcasecmp(head->data, fip->name)==0)  {
 					fip->wcall(&wb,pkg,&pkg->installed,0,fip);
-					if (!wb.used)
-						break;
 
 					varbufaddc(&wb, '\0');
 					varbufprintf(&fb, fmt, wb.buf);
@@ -240,7 +238,7 @@ void show1package(const struct lstitem* head, struct pkginfo *pkg) {
 					break;
 				}
 
-			if (!fip && pkg->installed.valid) {
+			if (!fip->name && pkg->installed.valid) {
 				const struct arbitraryfield* afp;
 
 				for (afp=pkg->installed.arbs; afp; afp=afp->next)

@@ -15,28 +15,48 @@ $varlistfile= 'debian/substvars';
 push(@INC,$dpkglibdir);
 require 'controllib.pl';
 
+require 'dpkg-gettext.pl';
+textdomain("dpkg-dev");
+
 $progname= "parsechangelog/$progname";
 
 $since='';
 
-sub usageversion {
-    print STDERR
-"Debian $progname $version.  Copyright (C) 1996
-Ian Jackson.  This is free software; see the GNU General Public Licence
-version 2 or later for copying conditions.  There is NO warranty.
+sub version {
+    printf _g("Debian %s version %s.\n"), $progname, $version;
 
-Usage: $progname [-v<versionsince>] | -h
-";
+    printf _g("
+Copyright (C) 1996 Ian Jackson.");
+    printf _g("
+This is free software; see the GNU General Public Licence version 2 or
+later for copying conditions. There is NO warranty.
+");
+}
+
+sub usage {
+    printf _g(
+"Usage: %s [<option>]
+
+Options:
+  -l<changelog>       use <changelog> as the file name when reporting.
+  -v<versionsince>    print changes since <versionsince>.
+  -h, --help          print this help message.
+      --version       print program version.
+"), $progname;
 }
 
 while (@ARGV) {
     $_=shift(@ARGV);
     if (m/^-v(.+)$/) {
         $since= $1;
-    } elsif (m/^-h$/) {
-        &usageversion; exit(0);
+    } elsif (m/^-l(.+)$/) {
+        $changelogfile = $1;
+    } elsif (m/^-(h|-help)$/) {
+        &usage; exit(0);
+    } elsif (m/^--version$/) {
+        &version; exit(0);
     } else {
-        &usageerr("unknown option or argument \`$_'");
+        &usageerr(sprintf(_g("unknown option \`%s'"), $_));
     }
 }
 
@@ -52,37 +72,37 @@ $expect='first heading';
 while (<STDIN>) {
     s/\s*\n$//;
 #    printf(STDERR "%-39.39s %-39.39s\n",$expect,$_);
-    if (m/^(\w[-+0-9a-z.]*) \(([^\(\) \t]+)\)((\s+[-0-9a-z]+)+)\;/i) {
+    if (m/^(\w[-+0-9a-z.]*) \(([^\(\) \t]+)\)((\s+[-+0-9a-z.]+)+)\;/i) {
         if ($expect eq 'first heading') {
             $f{'Source'}= $1;
             $f{'Version'}= $2;
             $f{'Distribution'}= $3;
-            &error("-v<since> option specifies most recent version") if
+            &error(_g("-v<since> option specifies most recent version")) if
                 $2 eq $since;
             $f{'Distribution'} =~ s/^\s+//;
         } elsif ($expect eq 'next heading or eof') {
             last if $2 eq $since;
             $f{'Changes'}.= " .\n";
         } else {
-            &clerror("found start of entry where expected $expect");
+            &clerror(sprintf(_g("found start of entry where expected %s"), $expect));
         }
         $rhs= $'; $rhs =~ s/^\s+//;
         undef %kvdone;
         for $kv (split(/\s*,\s*/,$rhs)) {
             $kv =~ m/^([-0-9a-z]+)\=\s*(.*\S)$/i ||
-                &clerror("bad key-value after \`;': \`$kv'");
+                &clerror(sprintf(_g("bad key-value after \`;': \`%s'"), $kv));
             $k=(uc substr($1,0,1)).(lc substr($1,1)); $v=$2;
-            $kvdone{$k}++ && &clwarn("repeated key-value $k");
+            $kvdone{$k}++ && &clwarn(sprintf(_g("repeated key-value %s"), $k));
             if ($k eq 'Urgency') {
                 $v =~ m/^([-0-9a-z]+)((\s+.*)?)$/i ||
-                    &clerror("badly formatted urgency value, at changelog ");
+                    &clerror(_g("badly formatted urgency value"));
                 $newurg= lc $1;
                 $newurgn= $urgencies{lc $1}; $newcomment= $2;
                 $newurgn ||
-                    &clwarn("unknown urgency value $newurg - comparing very low");
+                    &clwarn(sprintf(_g("unknown urgency value %s - comparing very low"), $newurg));
                 if (defined($f{'Urgency'})) {
                     $f{'Urgency'} =~ m/^([-0-9a-z]+)((\s+.*)?)$/i ||
-                        &internerr("urgency >$f{'Urgency'}<");
+                        &internerr(sprintf(_g("urgency >%s<"), $f{'Urgency'}));
                     $oldurg= lc $1;
                     $oldurgn= $urgencies{lc $1}; $oldcomment= $2;
                 } else {
@@ -100,40 +120,40 @@ while (<STDIN>) {
                 # XC for putting in Control, XS for putting in Source
                 $f{$k}= $v;
             } else {
-                &clwarn("unknown key-value key $k - copying to XS-$k");
+                &clwarn(sprintf(_g("unknown key-value key %s - copying to %s"), $k, "XS-$k"));
                 $f{"XS-$k"}= $v;
             }
         }
         $expect= 'start of change data'; $blanklines=0;
         $f{'Changes'}.= " $_\n .\n";
     } elsif (m/^\S/) {
-        &clerror("badly formatted heading line");
+        &clerror(_g("badly formatted heading line"));
     } elsif (m/^ \-\- (.*) <(.*)>  ((\w+\,\s*)?\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d\d:\d\d\s+[-+]\d{4}(\s+\([^\\\(\)]\))?)$/) {
         $expect eq 'more change data or trailer' ||
-            &clerror("found trailer where expected $expect");
+            &clerror(sprintf(_g("found trailer where expected %s"), $expect));
         $f{'Maintainer'}= "$1 <$2>" unless defined($f{'Maintainer'});
         $f{'Date'}= $3 unless defined($f{'Date'});
 #        $f{'Changes'}.= " .\n $_\n";
         $expect= 'next heading or eof';
         last if $since eq '';
     } elsif (m/^ \-\-/) {
-        &clerror("badly formatted trailer line");
+        &clerror(_g("badly formatted trailer line"));
     } elsif (m/^\s{2,}\S/) {
         $expect eq 'start of change data' || $expect eq 'more change data or trailer' ||
-            &clerror("found change data where expected $expect");
+            &clerror(sprintf(_g("found change data where expected %s"), $expect));
         $f{'Changes'}.= (" .\n"x$blanklines)." $_\n"; $blanklines=0;
         $expect= 'more change data or trailer';
     } elsif (!m/\S/) {
         next if $expect eq 'start of change data' || $expect eq 'next heading or eof';
         $expect eq 'more change data or trailer' ||
-            &clerror("found blank line where expected $expect");
+            &clerror(sprintf(_g("found blank line where expected %s"), $expect));
         $blanklines++;
     } else {
-        &clerror("unrecognised line");
+        &clerror(_g("unrecognised line"));
     }
 }
 
-$expect eq 'next heading or eof' || die "found eof where expected $expect";
+$expect eq 'next heading or eof' || die sprintf(_g("found eof where expected %s"), $expect);
 
 $f{'Changes'} =~ s/\n$//;
 $f{'Changes'} =~ s/^/\n/;
@@ -145,5 +165,13 @@ $f{'Closes'} = join(' ',sort { $a <=> $b} @closes);
 
 &outputclose(0);
 
-sub clerror { &error("$_[0], at changelog line $."); }
-sub clwarn { &warn("$_[0], at changelog line $."); }
+sub clerror
+{
+    &error(sprintf(_g("%s, at file %s line %d"), $_[0], $changelogfile, $.));
+}
+
+sub clwarn
+{
+    &warn(sprintf(_g("%s, at file %s line %d"), $_[0], $changelogfile, $.));
+}
+

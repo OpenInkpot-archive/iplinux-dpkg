@@ -1,5 +1,12 @@
 #!/usr/bin/perl
 
+use English;
+
+$dpkglibdir= "."; # This line modified by Makefile
+push(@INC,$dpkglibdir);
+require 'dpkg-gettext.pl';
+textdomain("dpkg-dev");
+
 # Global variables:
 # $v                - value parameter to function
 # $sourcepackage    - name of sourcepackage
@@ -24,6 +31,7 @@ $substvar{'Space'}= " ";
 $substvar{'Tab'}= "\t";
 $maxsubsts=50;
 $warnable_error= 1;
+$quiet_warnings = 0;
 
 $progname= $0; $progname= $& if $progname =~ m,[^/]+$,;
 
@@ -53,14 +61,14 @@ if(!defined($getlogin)) {
 
 if (defined ($ENV{'LOGNAME'})) {
     @fowner = getpwnam ($ENV{'LOGNAME'});
-    if (! @fowner) { die (sprintf ('unable to get login information for username "%s"', $ENV{'LOGNAME'})); }
+    if (! @fowner) { die (sprintf (_g('unable to get login information for username "%s"'), $ENV{'LOGNAME'})); }
 } elsif (defined ($getlogin)) {
     @fowner = getpwnam ($getlogin);
-    if (! @fowner) { die (sprintf ('unable to get login information for username "%s"', $getlogin)); }
+    if (! @fowner) { die (sprintf (_g('unable to get login information for username "%s"'), $getlogin)); }
 } else {
-    &warn (sprintf ('no utmp entry available and LOGNAME not defined; using uid of process (%d)', $<));
+    &warn (sprintf (_g('no utmp entry available and LOGNAME not defined; using uid of process (%d)'), $<));
     @fowner = getpwuid ($<);
-    if (! @fowner) { die (sprintf ('unable to get login information for uid %d', $<)); }
+    if (! @fowner) { die (sprintf (_g('unable to get login information for uid %d'), $<)); }
 }
 @fowner = @fowner[2,3];
 
@@ -76,6 +84,55 @@ sub findarch {
     $substvar{'Arch'}= $arch;
 }
 
+sub debian_arch_fix
+{
+    local ($os, $cpu) = @_;
+
+    if ($os eq "linux") {
+	return $cpu;
+    } else {
+	return "$os-$cpu";
+    }
+}
+
+sub debian_arch_split {
+    local ($_) = @_;
+
+    if (/^([^-]*)-(.*)/) {
+	return ($1, $2);
+    } elsif (/any/ || /all/) {
+	return ($_, $_);
+    } else {
+	return ("linux", $_);
+    }
+}
+
+sub debian_arch_eq {
+    my ($a, $b) = @_;
+    my ($a_os, $a_cpu) = debian_arch_split($a);
+    my ($b_os, $b_cpu) = debian_arch_split($b);
+
+    return ("$a_os-$a_cpu" eq "$b_os-$b_cpu");
+}
+
+sub debian_arch_is {
+    my ($real, $alias) = @_;
+    my ($real_os, $real_cpu) = debian_arch_split($real);
+    my ($alias_os, $alias_cpu) = debian_arch_split($alias);
+
+    if ("$real_os-$real_cpu" eq "$alias_os-$alias_cpu") {
+	return 1;
+    } elsif ("$alias_os-$alias_cpu" eq "any-any") {
+	return 1;
+    } elsif ("$alias_os-$alias_cpu" eq "any-$real_cpu") {
+	return 1;
+    } elsif ("$alias_os-$alias_cpu" eq "$real_os-any") {
+	return 1;
+    }
+
+    return 0;
+}
+
 sub substvars {
     my ($v) = @_;
     my ($lhs,$vn,$rhs,$count);
@@ -83,16 +140,16 @@ sub substvars {
     while ($v =~ m/\$\{([-:0-9a-z]+)\}/i) {
         # If we have consumed more from the leftover data, then
         # reset the recursive counter.
-        $count= 0 if (length($') < length($rhs));
+        $count= 0 if (length($POSTMATCH) < length($rhs));
 
         $count < $maxsubsts ||
-            &error("too many substitutions - recursive ? - in \`$v'");
+            &error(sprintf(_g("too many substitutions - recursive ? - in \`%s'"), $v));
         $lhs=$`; $vn=$1; $rhs=$';
         if (defined($substvar{$vn})) {
             $v= $lhs.$substvar{$vn}.$rhs;
             $count++;
         } else {
-            &warn("unknown substitution variable \${$vn}");
+            &warn(sprintf(_g("unknown substitution variable \${%s}"), $vn));
             $v= $lhs.$rhs;
         }
     }
@@ -109,37 +166,38 @@ sub outputclose {
 	    $v= &substvars($v);
 	}
         $v =~ m/\S/ || next; # delete whitespace-only fields
-        $v =~ m/\n\S/ && &internerr("field $f has newline then non whitespace >$v<");
-        $v =~ m/\n[ \t]*\n/ && &internerr("field $f has blank lines >$v<");
-        $v =~ m/\n$/ && &internerr("field $f has trailing newline >$v<");
+        $v =~ m/\n\S/ && &internerr(sprintf(_g("field %s has newline then non whitespace >%s<"), $f, $v));
+        $v =~ m/\n[ \t]*\n/ && &internerr(sprintf(_g("field %s has blank lines >%s<"), $f, $v));
+        $v =~ m/\n$/ && &internerr(sprintf(_g("field %s has trailing newline >%s<"), $f, $v));
 	if ($dosubstvars) {
 	   $v =~ s/,[\s,]*,/,/g;
 	   $v =~ s/^\s*,\s*//;
 	   $v =~ s/\s*,\s*$//;
 	}
         $v =~ s/\$\{\}/\$/g;
-        print("$f: $v\n") || &syserr("write error on control data");
+        print("$f: $v\n") || &syserr(_g("write error on control data"));
     }
 
-    close(STDOUT) || &syserr("write error on close control data");
+    close(STDOUT) || &syserr(_g("write error on close control data"));
 }
 
 sub parsecontrolfile {
     $controlfile="./$controlfile" if $controlfile =~ m/^\s/;
 
-    open(CDATA,"< $controlfile") || &error("cannot read control file $controlfile: $!");
+    open(CDATA,"< $controlfile") || &error(sprintf(_g("cannot read control file %s: %s"), $controlfile, $!));
     binmode(CDATA);
-    $indices= &parsecdata('C',1,"control file $controlfile");
-    $indices >= 2 || &error("control file must have at least one binary package part");
+    $indices= &parsecdata('C',1,sprintf(_g("control file %s"),$controlfile));
+    $indices >= 2 || &error(_g("control file must have at least one binary package part"));
 
     for ($i=1;$i<$indices;$i++) {
         defined($fi{"C$i Package"}) ||
-            &error("per-package paragraph $i in control info file is ".
-                   "missing Package line");
+            &error(sprintf(_g("per-package paragraph %d in control ".
+                                   "info file is missing Package line"),
+                           $i));
     }
     defined($fi{"C Source"}) ||
-        &error("source paragraph in control info file is ".
-               "missing Source line");
+        &error(_g("source paragraph in control info file is ".
+                       "missing Source line"));
 
 }
 
@@ -153,12 +211,14 @@ sub parsesubstvars {
                 next if m/^\#/ || !m/\S/;
                 s/\s*\n$//;
                 m/^(\w[-:0-9A-Za-z]*)\=/ ||
-                    &error("bad line in substvars file $varlistfile at line $.");
+                    &error(sprintf(_g("bad line in substvars file %s at line %d"),
+                                   $varlistfile, $.));
                 $substvar{$1}= $';
             }
             close(SV);
         } elsif ($! != ENOENT ) {
-            &error("unable to open substvars file $varlistfile: $!");
+            &error(sprintf(_g("unable to open substvars file %s: %s"),
+                           $varlistfile, $!));
         }
         $substvarsparsed = 1;
     }
@@ -186,17 +246,21 @@ ALTERNATE:
                 my $seen_arch='';
                 foreach my $arch (@arches) {
                     $arch=lc($arch);
-                    if ($arch eq $host_arch) {
+                    if (debian_arch_is($host_arch, $arch)) {
                         $seen_arch=1;
                         next;
-                    } elsif ($arch eq "!$host_arch") {
-                        next ALTERNATE;
-                    } elsif ($arch =~ /!/) {
-                        # This is equivilant to
-                        # having seen the current arch,
-                        # unless the current arch
-                        # is also listed..
-                        $seen_arch=1;
+                    } elsif ($arch =~ /^!/) {
+			($not_arch = $arch) =~ s/^!//;
+
+			if (debian_arch_is($host_arch, $not_arch)) {
+			    next ALTERNATE;
+			} else {
+			    # This is equivilant to
+			    # having seen the current arch,
+			    # unless the current arch
+			    # is also listed..
+			    $seen_arch=1;
+			}
                     }
                 }
                 if (! $seen_arch) {
@@ -204,7 +268,7 @@ ALTERNATE:
                 }
             }
             if (length($dep_or)) {
-		&warn("can't parse dependency $dep_and");
+		&warn(sprintf(_g("can't parse dependency %s"),$dep_and));
 		return undef;
 	    }
 	    push @or_list, [ $package, $relation, $version, \@arches ];
@@ -229,7 +293,7 @@ sub showdep {
 }
 
 sub parsechangelog {
-    defined($c=open(CDATA,"-|")) || &syserr("fork for parse changelog");
+    defined($c=open(CDATA,"-|")) || &syserr(_g("fork for parse changelog"));
     binmode(CDATA);
     if (!$c) {
         @al=($parsechangelog);
@@ -238,19 +302,55 @@ sub parsechangelog {
         push(@al,"-l$changelogfile");
         exec(@al) || &syserr("exec parsechangelog $parsechangelog");
     }
-    &parsecdata('L',0,"parsed version of changelog");
-    close(CDATA); $? && &subprocerr("parse changelog");
-    $substvar{'Source-Version'}= $fi{"L Version"};
+    &parsecdata('L',0,_g("parsed version of changelog"));
+    close(CDATA); $? && &subprocerr(_g("parse changelog"));
 }
 
+sub init_substvars
+{
+    # XXX: Source-Version is now deprecated, remove in the future.
+    $substvar{'Source-Version'}= $fi{"L Version"};
+    $substvar{'binary:Version'} = $fi{"L Version"};
+    $substvar{'source:Version'} = $fi{"L Version"};
+    $substvar{'source:Version'} =~ s/\+b[0-9]+$//;
+    $substvar{'source:Upstream-Version'} = $fi{"L Version"};
+    $substvar{'source:Upstream-Version'} =~ s/-[^-]*$//;
+
+    # We expect the calling program to set $version.
+    $substvar{"dpkg:Version"} = $version;
+    $substvar{"dpkg:Upstream-Version"} = $version;
+    $substvar{"dpkg:Upstream-Version"} =~ s/-[^-]+$//;
+}
+
+sub checkpackagename {
+    my $name = shift || '';
+    $name =~ m/[^-+.0-9a-z]/o &&
+        &error(sprintf(_g("source package name `%s' contains illegal character `%s'"), $name, $&));
+    $name =~ m/^[0-9a-z]/o ||
+        &error(sprintf(_g("source package name `%s' starts with non-alphanum"), $name));
+}
+
+sub checkversion {
+    my $version = shift || '';
+    $version =~ m/[^-+:.0-9a-zA-Z~]/o &&
+        &error(sprintf(_g("version number contains illegal character `%s'"), $&));
+}
 
 sub setsourcepackage {
+    checkpackagename( $v );
     if (length($sourcepackage)) {
         $v eq $sourcepackage ||
-            &error("source package has two conflicting values - $sourcepackage and $v");
+            &error(sprintf(_g("source package has two conflicting values - %s and %s"), $sourcepackage, $v));
     } else {
         $sourcepackage= $v;
     }
+}
+
+sub readmd5sum {
+    (my $md5sum = shift) or return;
+    $md5sum =~ s/^([0-9a-f]{32})\s*\*?-?\s*\n?$/$1/o
+	|| &failure(sprintf(_g("md5sum gave bogus output `%s'"), $md5sum));
+    return $md5sum;
 }
 
 sub parsecdata {
@@ -272,10 +372,10 @@ sub parsecdata {
             $fi{"o:$source$index $cf"}= $1;
             if (lc $cf eq 'package') { $p2i{"$source $v"}= $index; }
         } elsif (m/^\s+\S/) {
-            length($cf) || &syntax("continued value line not in field");
+            length($cf) || &syntax(_g("continued value line not in field"));
             $fi{"$source$index $cf"}.= "\n$_";
         } elsif (m/^-----BEGIN PGP/ && $many<0) {
-            $many == -2 && syntax("expected blank line before PGP signature");
+            $many == -2 && syntax(_g("expected blank line before PGP signature"));
             while (<CDATA>) { last if m/^$/; }
             $many= -2;
         } elsif (m/^$/) {
@@ -285,52 +385,61 @@ sub parsecdata {
             } elsif ($many == -2) {
                 $_= <CDATA> while defined($_) && $_ =~ /^\s*$/;
                 length($_) ||
-                    &syntax("expected PGP signature, found EOF after blank line");
+                    &syntax(_g("expected PGP signature, found EOF after blank line"));
                 s/\n$//;
                 m/^-----BEGIN PGP/ ||
-                    &syntax("expected PGP signature, found something else \`$_'");
+                    &syntax(sprintf(_g("expected PGP signature, found something else \`%s'"), $_));
                 $many= -3; last;
             } else {
 		while (<CDATA>) {
 		    /^\s*$/ ||
-			&syntax("found several \`paragraphs' where only one expected");
+			&syntax(_g("found several \`paragraphs' where only one expected"));
 		}
             }
         } else {
-            &syntax("line with unknown format (not field-colon-value)");
+            &syntax(_g("line with unknown format (not field-colon-value)"));
         }
     }
-    $many == -2 && &syntax("found start of PGP body but no signature");
+    $many == -2 && &syntax(_g("found start of PGP body but no signature"));
     if (length($cf)) { $index++; }
-    $index || &syntax("empty file");
+    $index || &syntax(_g("empty file"));
     return $index;
 }
 
 sub unknown {
     my $field = $_;
-    &warn("unknown information field \`$field\' in input data in $_[0]");
+    &warn(sprintf(_g("unknown information field \`%s\' in input data in %s"), $field, $_[0]));
 }
 
 sub syntax {
-    &error("syntax error in $whatmsg at line $.: $_[0]");
+    &error(sprintf(_g("syntax error in %s at line %d: %s"), $whatmsg, $., $_[0]));
 }
 
-sub failure { die "$progname: failure: $_[0]\n"; }
-sub syserr { die "$progname: failure: $_[0]: $!\n"; }
-sub error { die "$progname: error: $_[0]\n"; }
-sub internerr { die "$progname: internal error: $_[0]\n"; }
-sub warn { warn "$progname: warning: $_[0]\n"; }
-sub usageerr { print(STDERR "$progname: @_\n\n"); &usageversion; exit(2); }
+sub failure { die sprintf(_g("%s: failure: %s"), $progname, $_[0])."\n"; }
+sub syserr { die sprintf(_g("%s: failure: %s: %s"), $progname, $_[0], $!)."\n"; }
+sub error { die sprintf(_g("%s: error: %s"), $progname, $_[0])."\n"; }
+sub internerr { die sprintf(_g("%s: internal error: %s"), $progname, $_[0])."\n"; }
+sub warn { if (!$quiet_warnings) { warn sprintf(_g("%s: warning: %s"), $progname, $_[0])."\n"; } }
+sub usageerr
+{
+    printf(STDERR "%s: %s\n\n", $progname, "@_");
+    &usage;
+    exit(2);
+}
 sub warnerror { if ($warnable_error) { &warn( @_ ); } else { &error( @_ ); } }
 
 sub subprocerr {
     local ($p) = @_;
-    if (WIFEXITED($?)) {
-        die "$progname: failure: $p gave error exit status ".WEXITSTATUS($?)."\n";
-    } elsif (WIFSIGNALED($?)) {
-        die "$progname: failure: $p died from signal ".WTERMSIG($?)."\n";
+    require POSIX;
+    if (POSIX::WIFEXITED($?)) {
+        die sprintf(_g("%s: failure: %s gave error exit status %s"),
+                    $progname, $p, POSIX::WEXITSTATUS($?))."\n";
+    } elsif (POSIX::WIFSIGNALED($?)) {
+        die sprintf(_g("%s: failure: %s died from signal %s"),
+                    $progname, $p, POSIX::WTERMSIG($?))."\n";
     } else {
-        die "$progname: failure: $p failed with unknown exit code $?\n";
+        die sprintf(_g("%s: failure: %s failed with unknown exit code %d"),
+                    $progname, $p, $?)."\n";
     }
 }
 

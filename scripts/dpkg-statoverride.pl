@@ -6,32 +6,48 @@ use POSIX qw(:errno_h :signal_h);
 $admindir= "/var/lib/dpkg"; # This line modified by Makefile
 $version= '1.3.0'; # This line modified by Makefile
 
+($0) = $0 =~ m:.*/(.+):;
+
+my $dpkglibdir= "."; # This line modified by Makefile
+push (@INC, $dpkglibdir);
+require 'dpkg-gettext.pl';
+textdomain("dpkg");
+
 $verbose= 1;
 $doforce= 0;
 $doupdate= 0;
 $mode= "";
 
-sub UsageVersion {
-	print STDERR <<EOF || &quit("failed to write usage: $!");
-Debian dpkg-statoverride $version.
-Copyright (C) 2000 Wichert Akkerman.
+sub version {
+	printf _g("Debian %s version %s.\n"), $0, $version;
 
-This is free software; see the GNU General Public Licence version 2 or later
-for copying conditions.  There is NO warranty.
+	printf _g("
+Copyright (C) 2000 Wichert Akkerman.");
 
-Usage:
+	printf _g("
+This is free software; see the GNU General Public Licence version 2 or
+later for copying conditions. There is NO warranty.
+");
+}
 
-  dpkg-statoverride [options] --add <owner> <group> <mode> <file>
-  dpkg-statoverride [options] --remove <file>
-  dpkg-statoverride [options] --list [<glob-pattern>]
+sub usage {
+	printf _g(
+"Usage: %s [<option> ...] <command>
+
+Commands:
+  --add <owner> <group> <mode> <file>
+                           add a new entry into the database.
+  --remove <file>          remove file from the database.
+  --list [<glob-pattern>]  list current overrides in the database.
 
 Options:
-  --update                 immediately update file permissions
-  --force                  force an action even if a sanity check fails
-  --quiet                  quiet operation, minimal output
-  --help                   print this help screen and exit
-  --admindir <directory>   set the directory with the statoverride file
-EOF
+  --admindir <directory>   set the directory with the statoverride file.
+  --update                 immediately update file permissions.
+  --force                  force an action even if a sanity check fails.
+  --quiet                  quiet operation, minimal output.
+  --help                   show this help message.
+  --version                show the version.
+"), $0;
 }
 
 sub CheckModeConflict {
@@ -45,7 +61,9 @@ while (@ARGV) {
 	if (!m/^-/) {
 		unshift(@ARGV,$_); last;
 	} elsif (m/^--help$/) {
-		&UsageVersion; exit(0);
+		&usage; exit(0);
+	} elsif (m/^--version$/) {
+		&version; exit(0);
 	} elsif (m/^--update$/) {
 		$doupdate=1;
 	} elsif (m/^--quiet$/) {
@@ -53,7 +71,7 @@ while (@ARGV) {
 	} elsif (m/^--force$/) {
 		$doforce=1;
 	} elsif (m/^--admindir$/) {
-		@ARGV || &badusage("--admindir needs a directory argument");
+		@ARGV || &badusage(sprintf(_g("--%s needs a <directory> argument"), "admindir"));
 		$admindir= shift(@ARGV);
 	} elsif (m/^--add$/) {
 		&CheckModeConflict;
@@ -65,47 +83,47 @@ while (@ARGV) {
 		&CheckModeConflict;
 		$mode= 'list';
 	} else {
-		&badusage("unknown option \`$_'");
+		&badusage(sprintf(_g("unknown option \`%s'"), $_));
 	}
 }
 
 $dowrite=0;
 $exitcode=0;
 
-&badusage("no mode specified") unless $mode;
+&badusage(_g("no mode specified")) unless $mode;
 &ReadOverrides;
 
 if ($mode eq "add") {
-	@ARGV==4 || &badusage("--add needs four arguments");
+	@ARGV==4 || &badusage(_g("--add needs four arguments"));
 
 	$user=$ARGV[0];
 	if ($user =~ m/^#([0-9]+)$/) {
 	    $uid=$1;
-	    &badusage("illegal user $user") if ($uid<0);
+	    &badusage(sprintf(_g("illegal user %s"), $user)) if ($uid<0);
 	} else {
-	    (($name,$pw,$uid)=getpwnam($user)) || &badusage("non-existing user $user");
+	    (($name,$pw,$uid)=getpwnam($user)) || &badusage(sprintf(_g("non-existing user %s"), $user));
 	}
 
 	$group=$ARGV[1];
 	if ($group =~ m/^#([0-9]+)$/) {
 	    $gid=$1;
-	    &badusage("illegal group $group") if ($gid<0);
+	    &badusage(sprintf(_g("illegal group %s"), $group)) if ($gid<0);
 	} else {
-	    (($name,$pw,$gid)=getgrnam($group)) || &badusage("non-existing group $group");
+	    (($name,$pw,$gid)=getgrnam($group)) || &badusage(sprintf(_g("non-existing group %s"), $group));
 	}
 
 	$mode= $ARGV[2];
-	(($mode<0) or (oct($mode)>07777) or ($mode !~ m/\d+/)) && &badusage("illegal mode $mode");
+	(($mode<0) or (oct($mode)>07777) or ($mode !~ m/\d+/)) && &badusage(sprintf(_g("illegal mode %s"), $mode));
 	$file= $ARGV[3];
-	$file =~ m/\n/ && &badusage("file may not contain newlines");
-	$file =~ s,/+$,, && print STDERR "stripping trailing /\n";
+	$file =~ m/\n/ && &badusage(_g("file may not contain newlines"));
+	$file =~ s,/+$,, && print STDERR _g("stripping trailing /")."\n";
 
 	if (defined $owner{$file}) {
-		print STDERR "An override for \"$file\" already exists, ";
+		printf STDERR _g("An override for \"%s\" already exists, "), $file;
 		if ($doforce) {
-			print STDERR "but --force specified so lets ignore it.\n";
+			print STDERR _g("but --force specified so will be ignored.")."\n";
 		} else {
-			print STDERR "aborting\n";
+			print STDERR _g("aborting")."\n";
 			exit(3);
 		}
 	}
@@ -116,18 +134,18 @@ if ($mode eq "add") {
 
 	if ($doupdate) {
 	    if (not -e $file) {
-		print STDERR "warning: --update given but $file does not exist\n";
+		printf STDERR _g("warning: --update given but %s does not exist")."\n", $file;
 	    } else {
-		chown ($uid,$gid,$file) || warn "failed to chown $file: $!\n";
-		chmod (oct($mode),$file) || warn "failed to chmod $file: $!\n";
+		chown ($uid,$gid,$file) || warn sprintf(_g("failed to chown %s: %s"), $file, $!)."\n";
+		chmod (oct($mode),$file) || warn sprintf(_g("failed to chmod %s: %s"), $file, $!)."\n";
 	    }
 	}
 } elsif ($mode eq "remove") {
-	@ARGV==1 || &badusage("--remove needs one arguments");
+	@ARGV==1 || &badusage(sprintf(_g("--%s needs a single argument"), "remove"));
 	$file=$ARGV[0];
-	$file =~ s,/+$,, && print STDERR "stripping trailing /\n";
+	$file =~ s,/+$,, && print STDERR _g("stripping trailing /")."\n";
 	if (not defined $owner{$file}) {
-		print STDERR "No override present.\n";
+		print STDERR _g("No override present.")."\n";
 		exit(0) if ($doforce); 
 		exit(2);
 	}
@@ -135,7 +153,7 @@ if ($mode eq "add") {
 	delete $group{$file};
 	delete $mode{$file};
 	$dowrite=1;
-	print STDERR "warning: --update is useless for --remove\n" if ($doupdate);
+	print(STDERR _g("warning: --update is useless for --remove")."\n") if ($doupdate);
 } elsif ($mode eq "list") {
 	my (@list,@ilist,$pattern,$file);
 	
@@ -144,7 +162,7 @@ if ($mode eq "add") {
 		s/\W/\\$&/g;
 		s/\\\?/./g;
 		s/\\\*/.*/g;
-		s,/+$,, && print STDERR "stripping trailing /\n";
+		s,/+$,, && print STDERR _g("stripping trailing /")."\n";
 		push(@list,"^$_\$");
 	}
 	$pat= join('|',@list);
@@ -161,13 +179,13 @@ if ($mode eq "add") {
 exit($exitcode);
 
 sub ReadOverrides {
-	open(SO,"$admindir/statoverride") || &quit("cannot open statoverride: $!");
+	open(SO,"$admindir/statoverride") || &quit(sprintf(_g("cannot open statoverride: %s"), $!));
 	while (<SO>) {
 		my ($owner,$group,$mode,$file);
 		chomp;
 
 		($owner,$group,$mode,$file)=split(' ', $_, 4);
-		die "Multiple overrides for \"$file\", aborting"
+		die sprintf(_g("Multiple overrides for \"%s\", aborting"), $file)
 			if defined $owner{$file};
 		$owner{$file}=$owner;
 		$group{$file}=$group;
@@ -180,22 +198,32 @@ sub ReadOverrides {
 sub WriteOverrides {
 	my ($file);
 
-	open(SO,">$admindir/statoverride-new") || &quit("cannot open new statoverride file: $!");
+	open(SO,">$admindir/statoverride-new") || &quit(sprintf(_g("cannot open new statoverride file: %s"), $!));
 	foreach $file (keys %owner) {
 		print SO "$owner{$file} $group{$file} $mode{$file} $file\n";
 	}
 	close(SO);
 	chmod(0644, "$admindir/statoverride-new");
 	unlink("$admindir/statoverride-old") ||
-		$! == ENOENT || &quit("error removing statoverride-old: $!");
+		$! == ENOENT || &quit(sprintf(_g("error removing statoverride-old: %s"), $!));
 	link("$admindir/statoverride","$admindir/statoverride-old") ||
-		$! == ENOENT || &quit("error creating new statoverride-old: $!");
+		$! == ENOENT || &quit(sprintf(_g("error creating new statoverride-old: %s"), $!));
 	rename("$admindir/statoverride-new","$admindir/statoverride")
-		|| &quit("error installing new statoverride: $!");
+		|| &quit(sprintf(_g("error installing new statoverride: %s"), $!));
 }
 
 
-sub quit { print STDERR "dpkg-statoverride: @_\n"; exit(2); }
-sub badusage { print STDERR "dpkg-statoverride: @_\n\n"; print("You need --help.\n"); exit(2); }
+sub quit
+{
+	printf STDERR "%s: %s\n", $0, "@_";
+	exit(2);
+}
+
+sub badusage
+{
+	printf STDERR "%s: %s\n\n", $0, "@_";
+	&usage;
+	exit(2);
+}
 
 # vi: ts=8 sw=8 ai si cindent

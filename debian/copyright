@@ -1,5 +1,6 @@
 This is Debian's package maintenance system.
 
+Copyright © 2006 Frank Lichtenheld <djpig@debian.org>
 Copyright © 2004-2005 Scott James Remnant <scott@netsplit.com>
 Copyright © 2004-2005 Canonical Ltd.
 Copyright © 1999-2002 Wichert Akkerman <wakkerma@debian.org>
@@ -24,11 +25,6 @@ Copyright © 1995 Bruce Perens <bruce@pixar.com>
 Copyright © 1994 Carl Streeter <streeter@cae.wisc.edu>
 Copyright © 1994 Matt Welsh <mdw@sunsite.unc.edu>
 Copyright © 1994 Ian Murdock <imurdock@debian.org>
-
-
-Slind-specific patches and packaging are Copyright (C) 2005-2006 Siemens AG.
-
-
 
 Includes public domain MD5 code:
 	lib/md5.c and lib/md5.h originally written by Colin Plumb,

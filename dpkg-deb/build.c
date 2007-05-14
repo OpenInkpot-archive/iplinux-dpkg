@@ -286,10 +286,13 @@ void do_build(const char *const *argv) {
         strcat(controlfile, "/");
         strcat(controlfile, conffilename);
         if (lstat(controlfile,&controlstab)) {
-          if (errno == ENOENT)
-            ohshit(_("conffile `%.250s' does not appear in package"),conffilename);
-          else
-            ohshite(_("conffile `%.250s' is not stattable"),conffilename);
+	  if (errno == ENOENT) {
+	    if((n > 1) && isspace(conffilename[n-2]))
+	      fprintf(stderr, _("warning, "
+				"conffile filename `%s' contains trailing white spaces\n"), conffilename);
+	    ohshit(_("conffile `%.250s' does not appear in package"), conffilename);
+	  } else
+	    ohshite(_("conffile `%.250s' is not stattable"), conffilename);
         } else if (!S_ISREG(controlstab.st_mode)) {
           fprintf(stderr, _("warning, conffile `%s'"
                   " is not a plain file\n"), conffilename);
@@ -391,7 +394,7 @@ void do_build(const char *const *argv) {
     m_dup2(p1[0],0); close(p1[0]); close(p1[1]);
     m_dup2(p2[1],1); close(p2[0]); close(p2[1]);
     if (chdir(directory)) ohshite(_("failed to chdir to `%.255s'"),directory);
-    execlp(TAR,"tar","-cf", "-", "-T", "-", "--null", "--no-recursion", (char*)0);
+    execlp(TAR,"tar","-cf", "-", "--null", "-T", "-", "--no-recursion", (char*)0);
     ohshite(_("failed to exec tar -cf"));
   }
   close(p1[0]);

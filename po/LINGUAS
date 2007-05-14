@@ -16,8 +16,11 @@ cs
 # Danish - Claus Hindsgaul <claus_h@image.dk>
 da
 
-# German - Michael Piefel <piefel@debian.org>
+# German - Sven Joachim <svenjoac@gmx.de>
 de
+
+# Dzongkha - norbu <nor_den@hotmail.com>
+dz
 
 # Greek (Hellenic) - George Papamichelakis <george@step.gr>
 el
@@ -39,6 +42,9 @@ gl
 # until some correct display of RTL languages can be OK
 # he
 
+# Hungarian - Szervác Attila <sas@321.hu>
+hu
+
 # Indonesian - Arief S Fitrianto <arief@gurame.fisika.ui.ac.id>
 id
 
@@ -48,17 +54,26 @@ it
 # Japanese - Kenshi Muto <kmuto@debian.org>
 ja
 
+# Khmer - Khoem Sokhem <khoemsokhem@khmeros.info>
+km
+
 # Korean - Changwoo Ryu <cwryu@debian.org>
 ko
 
 # Norwegian (Bokmål) - Bjorn Steensrud <bjornst@powertech.no>
 nb
 
+# Nepali - Paras Pradhan <pradhanparas@gmail.com>
+ne
+
 # Dutch - Bart Cornelis <cobaco@linux.be>
 nl
 
 # Norwegian (Nynorsk) - Håvard Korsvoll <korsvoll@skulelinux.no>
 nn
+
+# Punjabi - Amanpreet Singh Alam <apbrar@gmail.com>
+pa
 
 # Polish - Bartosz Feñski <fenio@debian.org>
 pl
@@ -83,6 +98,9 @@ sv
 
 # Tagalog - Eric Pareja <xenos@upm.edu.ph>
 tl
+
+# Vietnamese - Clytie Siddall <clytie@riverland.net.au>
+vi
 
 # Simplified Chinese - Tchaikov <chaisave@263.com>
 zh_CN

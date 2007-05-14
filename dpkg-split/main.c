@@ -35,34 +35,46 @@
 #include "dpkg-split.h"
 
 static void printversion(void) {
-  if (fputs
-      (_("Debian GNU/Linux `dpkg-split' package split/join tool; version "), stdout) < 0) werr ("stdout");
-  if (fputs (DPKG_VERSION_ARCH ".\n", stdout) < 0) werr ("stdout");
-  if (fputs (_("Copyright (C) 1994-1996 Ian Jackson.  This is free software; see the\n"
-       "GNU General Public Licence version 2 or later for copying conditions.\n"
-       "There is NO warranty.  See dpkg-split --licence for details.\n"),
-       stdout) < 0) werr("stdout");
+  if (printf(_("Debian `%s' package split/join tool; version %s.\n"),
+	     SPLITTER, DPKG_VERSION_ARCH) < 0) werr ("stdout");
+  if (printf(_("Copyright (C) 1994-1996 Ian Jackson.\n")) < 0) werr ("stdout");
+  if (printf(_("This is free software; see the GNU General Public License version 2 or\n"
+	       "later for copying conditions. There is NO warranty.\n"
+	       "See %s --license for copyright and license details.\n"),
+	     SPLITTER) < 0) werr("stdout");
 }
 
 static void usage(void) {
-  if (printf(_("\
-Usage: dpkg-split -s|--split <file> [<prefix>]     Split an archive.\n\
-       dpkg-split -j|--join <part> <part> ...      Join parts together.\n\
-       dpkg-split -I|--info <part> ...             Display info about a part.\n\
-       dpkg-split -h|--help|--version|--licence    Show help/version/licence.\n\
-\n\
-       dpkg-split -a|--auto -o <complete> <part>   Auto-accumulate parts.\n\
-       dpkg-split -l|--listq                       List unmatched pieces.\n\
-       dpkg-split -d|--discard [<filename> ...]    Discard unmatched pieces.\n\
-\n\
-Options:  --depotdir <directory>  (default is %s/%s)\n\
-          -S|--partsize <size>    (in Kb, for -s, default is 450)\n\
-          -o|--output <file>      (for -j, default is <package>-<version>.deb)\n\
-          -Q|--npquiet            (be quiet when -a is not a part)\n\
-          --msdos                 (generate 8.3 filenames)\n\
-\n\
-Exit status: 0 = OK;  1 = -a is not a part;  2 = trouble!\n"),
-             ADMINDIR, PARTSDIR) < 0) werr("stdout");
+  if (printf(_(
+"Usage: %s [<option> ...] <command>\n"
+"\n"), SPLITTER) < 0) werr("stdout");
+
+  if (printf(_(
+"Commands:\n"
+"  -s|--split <file> [<prefix>]     Split an archive.\n"
+"  -j|--join <part> <part> ...      Join parts together.\n"
+"  -I|--info <part> ...             Display info about a part.\n"
+"  -a|--auto -o <complete> <part>   Auto-accumulate parts.\n"
+"  -l|--listq                       List unmatched pieces.\n"
+"  -d|--discard [<filename> ...]    Discard unmatched pieces.\n"
+"\n")) < 0) werr("stdout");
+
+  if (printf(_(
+"  -h|--help                        Show this help message.\n"
+"  --version                        Show the version.\n"
+"  --license|--licence              Show the copyright licensing terms.\n"
+"\n")) < 0) werr("stdout");
+
+  if (printf(_(
+"Options:\n"
+"  --depotdir <directory>           Use <directory> instead of %s/%s.\n"
+"  -S|--partsize <size>             In KiB, for -s (default is 450).\n"
+"  -o|--output <file>               For -j (default is <package>-<version>.deb).\n"
+"  -Q|--npquiet                     Be quiet when -a is not a part.\n"
+"  --msdos                          Generate 8.3 filenames.\n"
+"\n"
+"Exit status: 0 = OK;  1 = -a is not a part;  2 = trouble!\n"),
+	     ADMINDIR, PARTSDIR) < 0) werr("stdout");
 }
 
 const char thisname[]= SPLITTER;
@@ -142,7 +154,8 @@ static const struct cmdinfo cmdinfos[]= {
 
 static void setaction(const struct cmdinfo *cip, const char *value) {
   if (cipaction)
-    badusage(_("conflicting actions --%s and --%s"),cip->olong,cipaction->olong);
+    badusage(_("conflicting actions -%c (--%s) and -%c (--%s)"),
+             cip->oshort, cip->olong, cipaction->oshort, cipaction->olong);
   cipaction= cip;
   assert((int)(cip-cmdinfos) < (int)(sizeof(dofunctions)*sizeof(dofunction*)));
   action= dofunctions[cip-cmdinfos];

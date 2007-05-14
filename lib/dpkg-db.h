@@ -38,6 +38,7 @@ enum deptype {
   dep_recommends,
   dep_depends,
   dep_predepends,
+  dep_breaks,
   dep_conflicts,
   dep_provides,
   dep_replaces,
@@ -84,6 +85,7 @@ struct conffile {
   struct conffile *next;
   const char *name;
   const char *hash;
+  int obsolete;
 };
 
 struct filedetails {

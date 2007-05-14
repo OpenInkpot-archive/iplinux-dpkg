@@ -149,9 +149,9 @@ void f_priority(struct pkginfo *pigp, struct pkginfoperfile *pifp,
                 const char *filename, int lno, FILE *warnto, int *warncount,
                 const char *value, const struct fieldinfo *fip) {
   if (!*value) return;
-  pigp->priority= convert_string(filename,lno,"word in `priority' field", pri_other,
-                             warnto,warncount,pigp,
-                             value,priorityinfos,NULL);
+  pigp->priority = convert_string(filename, lno, _("word in `priority' field"),
+				  pri_other, warnto, warncount, pigp,
+				  value, priorityinfos, NULL);
   if (pigp->priority == pri_other) pigp->otherpriority= nfstrsave(value);
 }
 
@@ -166,9 +166,11 @@ void f_status(struct pkginfo *pigp, struct pkginfoperfile *pifp,
              _("value for `status' field not allowed in this context"));
   if (flags & pdb_recordavailable) return;
   
-  pigp->want= convert_string(filename,lno,"first (want) word in `status' field", -1,
+  pigp->want = convert_string(filename, lno,
+			     _("first (want) word in `status' field"), -1,
                              warnto,warncount,pigp, value,wantinfos,&ep);
-  pigp->eflag= convert_string(filename,lno,"second (error) word in `status' field", -1,
+  pigp->eflag = convert_string(filename, lno,
+			      _("second (error) word in `status' field"), -1,
                               warnto,warncount,pigp, ep,eflaginfos,&ep);
   if (pigp->eflag & eflagf_obsoletehold) {
     pigp->want= want_hold;
@@ -222,13 +224,38 @@ void f_configversion(struct pkginfo *pigp, struct pkginfoperfile *pifp,
                      "in Config-Version string `%.250s': %.250s"),value,emsg);
 }
 
+void conffvalue_lastword(const char *value, const char *from,
+			 const char *endent,
+			 const char **word_start_r, int *word_len_r,
+			 const char **new_from_r,
+			 const char *filename, int lno,
+			 FILE *warnto, int *warncount, struct pkginfo *pigp) {
+  /* the code in f_conffiles ensures that value[-1]==' ', which is helpful */
+  const char *lastspc;
+  
+  if (from <= value+1) goto malformed;
+  for (lastspc= from-1; *lastspc != ' '; lastspc--);
+  if (lastspc <= value+1 || lastspc >= endent-1) goto malformed;
+
+  *new_from_r= lastspc;
+  *word_start_r= lastspc + 1;
+  *word_len_r= (int)(from - *word_start_r);
+  return;
+
+malformed:
+  parseerr(NULL,filename,lno, warnto,warncount,pigp,0,
+	   _("value for `conffiles' has malformatted line `%.*s'"),
+	   (int)(endent-value > 250 ? 250 : endent-value), value);
+}
+
 void f_conffiles(struct pkginfo *pigp, struct pkginfoperfile *pifp,
                  enum parsedbflags flags,
                  const char *filename, int lno, FILE *warnto, int *warncount,
                  const char *value, const struct fieldinfo *fip) {
+  static const char obsolete_str[]= "obsolete";
   struct conffile **lastp, *newlink;
-  const char *endent, *endfn;
-  int c, namelen, hashlen;
+  const char *endent, *endfn, *hashstart;
+  int c, namelen, hashlen, obsolete;
   char *newptr;
   
   lastp= &pifp->conffiles;
@@ -238,11 +265,15 @@ void f_conffiles(struct pkginfo *pigp, struct pkginfoperfile *pifp,
     if (c != ' ') parseerr(NULL,filename,lno, warnto,warncount,pigp,0, _("value for"
                            " `conffiles' has line starting with non-space `%c'"), c);
     for (endent= value; (c= *endent)!=0 && c != '\n'; endent++);
-    for (endfn= endent; *endfn != ' '; endfn--);
-    if (endfn <= value+1 || endfn >= endent-1)
-      parseerr(NULL,filename,lno, warnto,warncount,pigp,0,
-               _("value for `conffiles' has malformatted line `%.*s'"),
-               (int)(endent-value > 250 ? 250 : endent-value), value);
+    conffvalue_lastword(value, endent, endent,
+			&hashstart, &hashlen, &endfn,
+			filename,lno,warnto,warncount,pigp);
+    obsolete= (hashlen == sizeof(obsolete_str)-1 &&
+	       !memcmp(hashstart, obsolete_str, hashlen));
+    if (obsolete)
+      conffvalue_lastword(value, endfn, endent,
+			  &hashstart, &hashlen, &endfn,
+			  filename,lno,warnto,warncount,pigp);
     newlink= nfmalloc(sizeof(struct conffile));
     value= skip_slash_dotslash(value);
     namelen= (int)(endfn-value);
@@ -253,9 +284,10 @@ void f_conffiles(struct pkginfo *pigp, struct pkginfoperfile *pifp,
     memcpy(newptr+1,value,namelen);
     newptr[namelen+1]= 0;
     newlink->name= newptr;
-    hashlen= (int)(endent-endfn)-1; newptr= nfmalloc(hashlen+1);
-    memcpy(newptr,endfn+1,hashlen); newptr[hashlen]= 0;
+    newptr= nfmalloc(hashlen+1);
+    memcpy(newptr,hashstart,hashlen); newptr[hashlen]= 0;
     newlink->hash= newptr;
+    newlink->obsolete= obsolete;
     newlink->next =NULL;
     *lastp= newlink;
     lastp= &newlink->next;
@@ -379,10 +411,10 @@ void f_dependency(struct pkginfo *pigp, struct pkginfoperfile *pifp,
         while (isspace(*p)) p++;
         if (*p == '(') parseerr(NULL,filename,lno, warnto,warncount,pigp,0,
                                 _("`%s' field, reference to `%.255s': "
-                                "version contains `('"),fip->name,depname);
+                                "version contains `%c'"), fip->name,depname, ')');
 	else if (*p != ')') parseerr(NULL,filename,lno, warnto,warncount,pigp,0,
                                 _("`%s' field, reference to `%.255s': "
-                                "version contains ` '"),fip->name,depname);
+                                "version contains `%c'"), fip->name,depname, ' ');
         else if (*p == 0) parseerr(NULL,filename,lno, warnto,warncount,pigp,0,
                                    _("`%s' field, reference to `%.255s': "
                                    "version unterminated"),fip->name,depname);
@@ -407,6 +439,7 @@ void f_dependency(struct pkginfo *pigp, struct pkginfoperfile *pifp,
                  " error after reference to package `%.255s'"),
                  fip->name, dop->ed->name);
       if (fip->integer == dep_conflicts ||
+          fip->integer == dep_breaks ||
           fip->integer == dep_provides ||
           fip->integer == dep_replaces)
         parseerr(NULL,filename,lno, warnto,warncount,pigp,0,
