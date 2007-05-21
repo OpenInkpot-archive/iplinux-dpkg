@@ -1,4 +1,5 @@
-#!/bin/sh -e
+#!/bin/sh
+
 # This script can be called in the following ways:
 #
 # Before the package is installed:

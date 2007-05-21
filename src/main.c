@@ -136,7 +136,7 @@ static void usage(void) {
 }
 
 const char thisname[]= "dpkg";
-const char architecture[]= ARCHITECTURE;
+char * architecture;
 const char printforhelp[]= N_(
 "Type dpkg --help for help about installing and deinstalling packages [*];\n"
 "Use `dselect' or `aptitude' for user-friendly package management;\n"
@@ -623,7 +623,9 @@ printf("line=`%*s'\n",(int)linevb.used,linevb.buf);
 int main(int argc, const char *const *argv) {
   jmp_buf ejbuf;
   static void (*actionfunction)(const char *const *argv);
+  char *archp = getenv("CROSS_ARCH");
 
+  architecture = strdup(archp ? archp : ARCHITECTURE);
   standard_startup(&ejbuf, argc, &argv, DPKG, 1, cmdinfos);
   if (!cipaction) badusage(_("need an action option"));
 

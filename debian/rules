@@ -28,9 +28,9 @@ endif
 # Don't enable everything on all platforms
 DEB_HOST_ARCH_OS  ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 
-ifeq ($(DEB_HOST_ARCH_OS),linux)
-	confflags += --with-selinux=static
-endif
+#ifeq ($(DEB_HOST_ARCH_OS),linux)
+#	confflags += --with-selinux=static
+#endif
 
 
 # Create configure script if necessary, automake handles rebuilding it.
@@ -52,7 +52,10 @@ build-tree/config.status: configure
 		--sysconfdir=/etc \
 		--localstatedir=/var/lib \
 		--with-zlib=static \
-		--with-bz2=static
+		--without-bz2 \
+		--without-libintl-prefix \
+		--disable-nls
+#		--without-dselect
 
 # Build the package in build-tree
 build: build-tree/build-stamp
@@ -71,6 +74,8 @@ install: build
 	dh_installdirs
 
 	cd build-tree && $(MAKE) DESTDIR="$(CURDIR)/debian/tmp" install
+	install -m 644 debian/archtable debian/tmp/usr/share/dpkg/archtable
+	install -m 644 debian/cputable.slind debian/tmp/usr/share/dpkg/cputable
 
 # Put together the dpkg and dselect packages
 binary-arch: install
@@ -79,20 +84,21 @@ binary-arch: install
 	dh_install --sourcedir=debian/tmp -a
 	dh_installlogrotate -a
 
-	install -d debian/dpkg/sbin
-	mv debian/dpkg/usr/sbin/start-stop-daemon debian/dpkg/sbin
+	install -d debian/start-stop-daemon/sbin
+	mv debian/dpkg/usr/sbin/start-stop-daemon debian/start-stop-daemon/sbin
 
+ifeq ($(INSTALL_DOCS),yes)
 	dh_installchangelogs -pdpkg ChangeLog
 	dh_installdocs -pdpkg
 	install -d debian/dselect/usr/share/doc
 	ln -s dpkg debian/dselect/usr/share/doc/dselect
-
+else
+	rm -Rf debian/dpkg/usr/share/man
+endif
 	install -d debian/dpkg/usr/share/lintian/overrides
 	install -m 644 debian/dpkg.lintian-overrides \
 		       debian/dpkg/usr/share/lintian/overrides/dpkg
 	install -d debian/dselect/usr/share/lintian/overrides
-	install -m 644 debian/dselect.lintian-overrides \
-		       debian/dselect/usr/share/lintian/overrides/dselect
 
 	dh_strip -a
 	dh_compress -a
@@ -109,8 +115,10 @@ binary-indep: install
 	dh_testroot -i
 	dh_install --sourcedir=debian/tmp -i
 
+ifeq ($(INSTALL_DOCS),yes)
 	install -d debian/dpkg-dev/usr/share/doc
 	ln -s dpkg debian/dpkg-dev/usr/share/doc/dpkg-dev
+endif
 
 	install -d debian/dpkg-dev/usr/share/lintian/overrides
 	install -m 644 debian/dpkg-dev.lintian-overrides \

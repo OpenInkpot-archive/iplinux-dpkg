@@ -15,15 +15,12 @@ i486-linux-gnu			i386
 i486-linux-uclibc		uclibc-i386
 ia64-linux-gnu			ia64
 alpha-linux-gnu			alpha
-x86_64-linux-gnu		amd64
 arm-linux-gnu			arm
 arm-linux-uclibc		uclibc-arm
 hppa-linux-gnu			hppa
 m68k-linux-gnu			m68k
 mips-linux-gnu			mips
 mipsel-linux-gnu		mipsel
-mips-linux-uclibc		uclibc-mips
-mipsel-linux-uclibc		uclibc-mipsel
 powerpc-linux-gnu		powerpc
 powerpc-linux-uclibc		uclibc-powerpc
 powerpc64-linux-gnu		ppc64

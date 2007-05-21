@@ -26,12 +26,19 @@ Copyright © 1994 Carl Streeter <streeter@cae.wisc.edu>
 Copyright © 1994 Matt Welsh <mdw@sunsite.unc.edu>
 Copyright © 1994 Ian Murdock <imurdock@debian.org>
 
+
+Slind-specific patches and packaging are Copyright (C) 2005-2006 Siemens AG.
+
+
+
 Includes public domain MD5 code:
 	lib/md5.c and lib/md5.h originally written by Colin Plumb,
 
 Includes code from ‘getopt’ and ‘gettext’:
 	Copyright © 1984-2002 Free Software Foundation, Inc.
 
+This version includes packaging patches which are:
+	Copyright (C) 2005, 2006 Siemens AG.
 
 Licence:
 

@@ -267,7 +267,7 @@ static int do_script(const char *pkg, const char *scriptname, const char *script
       narglist[r]= arglist[r];
     scriptexec= preexecscript(scriptpath,(char * const *)narglist);
     narglist[0]= scriptexec;
-    execv(scriptexec,(char * const *)narglist);
+    execvp(scriptexec,(char * const *)narglist);
     ohshite(desc,name);
   }
   script_catchsignals(); /* This does a push_cleanup() */
