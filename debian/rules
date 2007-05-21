@@ -79,14 +79,21 @@ install: build
 
 # Put together the dpkg and dselect packages
 binary-arch: install
+ifneq (,$(findstring target,$(SLIND_BUILD_OPTIONS)))
+	cp -f debian/control.in/control.target debian/control
+else
+	cp -f debian/control.in/control.host debian/control
+endif
 	dh_testdir -a
 	dh_testroot -a
 	dh_install --sourcedir=debian/tmp -a
 	dh_installlogrotate -a
-
 	install -d debian/start-stop-daemon/sbin
+ifneq (,$(findstring target,$(SLIND_BUILD_OPTIONS)))
 	mv debian/dpkg/usr/sbin/start-stop-daemon debian/start-stop-daemon/sbin
-
+else
+	mv debian/dpkg/usr/sbin/start-stop-daemon debian/dpkg/sbin
+endif
 ifeq ($(INSTALL_DOCS),yes)
 	dh_installchangelogs -pdpkg ChangeLog
 	dh_installdocs -pdpkg
@@ -137,6 +144,7 @@ binary: binary-arch binary-indep
 
 # Clean up the mess we made
 clean:
+	cp -f debian/control.in/control.host debian/control
 	dh_testdir
 
 	rm -rf build-tree
