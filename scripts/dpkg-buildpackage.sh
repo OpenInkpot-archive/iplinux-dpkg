@@ -30,7 +30,7 @@ Options:
   -spgp          the sign-command is called like PGP.
   -us            unsigned source.
   -uc            unsigned changes.
-  -a<arch>       Debian architecture we build for (implies -d).
+  -a<arch>       Debian architecture we build for.
   -b             binary-only, do not build source. } also passed to
   -B             binary-only, no arch-indep files. } dpkg-genchanges
   -S             source only, no binary files.     }
@@ -99,7 +99,7 @@ do
 	-us)	signsource=: ;;
 	-uc)	signchanges=: ;;
 	-ap)	usepause="true";;
-	-a*)    targetarch="$value"; checkbuilddep=false ;;
+	-a*)    targetarch="$value" ;;
 	-si)	sourcestyle=-si ;;
 	-sa)	sourcestyle=-sa ;;
 	-sd)	sourcestyle=-sd ;;
