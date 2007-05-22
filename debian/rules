@@ -24,14 +24,17 @@ ifeq ($(DEB_BUILD_GNU_TYPE), $(DEB_HOST_GNU_TYPE))
 else
 	confflags += --build=$(DEB_BUILD_GNU_TYPE) --host=$(DEB_HOST_GNU_TYPE)
 endif
+confflags += --prefix=/usr --sysconfdir=/etc --localstatedir=/var/lib \
+	     --with-zlib=static --without-bz2 --without-libintl-prefix \
+	     --disable-nls
+
+ifneq (,$(findstring target,$(SLIND_BUILD_OPTIONS)))
+	confflags += --without-dselect
+else
+endif
 
 # Don't enable everything on all platforms
 DEB_HOST_ARCH_OS  ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
-
-#ifeq ($(DEB_HOST_ARCH_OS),linux)
-#	confflags += --with-selinux=static
-#endif
-
 
 # Create configure script if necessary, automake handles rebuilding it.
 configure:
@@ -46,16 +49,8 @@ build-tree/config.status: configure
 	install -d build-tree
 	cd build-tree && ../configure $(confflags) \
 		CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" \
-		--prefix=/usr \
 		--mandir=\$${datadir}/man \
-		--infodir=\$${datadir}/info \
-		--sysconfdir=/etc \
-		--localstatedir=/var/lib \
-		--with-zlib=static \
-		--without-bz2 \
-		--without-libintl-prefix \
-		--disable-nls
-#		--without-dselect
+		--infodir=\$${datadir}/info
 
 # Build the package in build-tree
 build: build-tree/build-stamp

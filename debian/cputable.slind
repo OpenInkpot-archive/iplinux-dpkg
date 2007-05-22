@@ -18,8 +18,10 @@ uclibc-i386      i486        (i[3456]86|pentium)
 ia64		ia64		ia64
 alpha		alpha		alpha.*
 amd64		x86_64		x86_64
+armeb		armeb		armeb.*
+uclibc-armeb    armeb		armeb.*
 arm		arm		arm.*
-uclibc-arm       arm         arm.*
+uclibc-arm	arm		arm.*
 hppa		hppa		hppa.*
 m32r		m32r		m32r
 m68k		m68k		m68k
@@ -28,11 +30,11 @@ mipsel		mipsel		mipsel
 powerpc		powerpc		(powerpc|ppc)
 uclibc-powerpc	powerpc		(powerpc|ppc)
 ppc64		powerpc64	(powerpc|ppc)64
-uclibc-ppc64	powerpc64	(powerpc|ppc)64
 s390		s390		s390
 s390x		s390x		s390x
 sh3		sh3		sh3
 sh3eb		sh3eb		sh3eb
 sh4		sh4		sh4
+sh4a		sh4a		sh4a
 sh4eb		sh4eb		sh4eb
 sparc		sparc		sparc(64)?

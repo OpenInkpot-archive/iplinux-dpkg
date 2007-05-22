@@ -18,6 +18,8 @@ alpha-linux-gnu			alpha
 x86_64-linux-gnu		amd64
 arm-linux-gnu			arm
 arm-linux-uclibc		uclibc-arm
+armeb-linux-gnu			armeb
+armeb-linux-uclibc		uclibc-armeb
 hppa-linux-gnu			hppa
 m68k-linux-gnu			m68k
 mips-linux-gnu			mips
@@ -27,8 +29,11 @@ mipsel-linux-uclibc		uclibc-mipsel
 powerpc-linux-gnu		powerpc
 powerpc-linux-uclibc		uclibc-powerpc
 powerpc64-linux-gnu		ppc64
-powerpc64-linux-uclibc		uclibc-ppc64
 s390-linux-gnu			s390
 sh-linux-gnu			sh
+sh4-linux-gnu			sh4
+sh4-linux-uclibc		uclibc-sh4
+sh4a-linux-gnu			sh4a
+sh4a-linux-uclibc		uclibc-sh4a
 sparc-linux-gnu			sparc
 i486-gnu			hurd-i386
