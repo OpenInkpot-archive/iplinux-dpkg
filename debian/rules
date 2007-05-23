@@ -88,10 +88,11 @@ endif
 	dh_testroot -a
 	dh_install --sourcedir=debian/tmp -a
 	dh_installlogrotate -a
-	install -d debian/start-stop-daemon/sbin
 ifneq (,$(findstring target,$(SLIND_BUILD_OPTIONS)))
+	install -d debian/start-stop-daemon/sbin
 	mv debian/dpkg/usr/sbin/start-stop-daemon debian/start-stop-daemon/sbin
 else
+	install -d debian/dpkg/sbin
 	mv debian/dpkg/usr/sbin/start-stop-daemon debian/dpkg/sbin
 endif
 ifeq ($(INSTALL_DOCS),yes)
