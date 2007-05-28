@@ -142,11 +142,11 @@ binary: binary-arch binary-indep
 
 # Clean up the mess we made
 clean:
-	cp -f debian/control.in/control.host debian/control
 	dh_testdir
 
 	rm -rf build-tree
 	dh_clean
+	cp -f debian/control.in/control.host debian/control
 
 
 .PHONY: build install binary-arch binary-indep binary clean
