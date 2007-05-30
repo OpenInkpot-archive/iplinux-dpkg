@@ -1,10 +1,12 @@
 Source: dpkg
-Section: admin
+Section: core
 Priority: required
 Maintainer: Alexander Shishkin <virtuoso@slind.org>
 Origin: slind
 Bugs: debbugs://bugs.debian.org
 Standards-Version: 3.7.2
+XCS-Cross-Host-Build-Depends: debhelper (>= 4.1.81), pkg-config
+XCS-Cross-Build-Depends: zlib1g-dev (>= 1:1.1.3-19.1), libncurses5-dev
 Build-Depends: debhelper (>= 4.1.81), pkg-config, zlib1g-dev (>= 1:1.1.3-19.1), libncurses5-dev | libncurses-dev
 
 Package: dpkg
@@ -13,6 +15,7 @@ Essential: yes
 Pre-Depends: ${shlibs:Depends}
 Depends: slind-virtual-coreutils | coreutils, slind-virtual-start-stop-daemon | start-stop-daemon
 Suggests: apt
+Section: core
 Description: package maintenance system for Debian with Slind patches
  This package contains the low-level commands for handling the installation
  and removal of packages on your system.
@@ -21,7 +24,7 @@ Description: package maintenance system for Debian with Slind patches
  install the developers' package `dpkg-dev' as well as this one.
 
 Package: dpkg-dev
-Section: utils
+Section: core
 Priority: standard
 Architecture: all
 Depends: dpkg (>= 1.13.20), perl5, perl-modules, cpio (>= 2.4.2-2),
@@ -40,6 +43,7 @@ Description: package building tools for Debian
 Package: dselect
 Architecture: any
 Depends: ${shlibs:Depends}, dpkg (>= 1.13.1)
+Section: core
 Description: user tool to manage Debian packages
  dselect is an interface for managing the installation and removal of
  packages on your system.
@@ -51,5 +55,6 @@ Package: start-stop-daemon
 Architecture: any
 Depends: ${shlibs:Depends}
 Replaces: busybox, dpkg (<< 1.13.25.slind1)
+Section: core
 Description: separately-packaged start-stop-daemon
  Separately packaged start-stop-daemon to avoid conflicts
