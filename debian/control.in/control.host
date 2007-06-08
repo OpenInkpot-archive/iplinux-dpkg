@@ -1,5 +1,5 @@
 Source: dpkg
-Section: admin
+Section: host-tools
 Priority: required
 Maintainer: Alexander Shishkin <virtuoso@slind.org>
 Origin: slind
@@ -23,7 +23,7 @@ Description: package maintenance system for Debian with Slind patches
  install the developers' package `dpkg-dev' as well as this one.
 
 Package: dpkg-dev
-Section: utils
+Section: host-tools
 Priority: standard
 Architecture: all
 Depends: dpkg (>= 1.13.20), perl5, perl-modules, cpio (>= 2.4.2-2),
