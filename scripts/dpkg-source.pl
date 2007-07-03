@@ -201,7 +201,7 @@ if ($opmode eq 'build') {
         $v= $fi{$_};
         if (s/^C //) {
             if (m/^Source$/i) { &setsourcepackage; }
-            elsif (m/^(Standards-Version|Origin|Maintainer)$/i) { $f{$_}= $v; }
+            elsif (m/^(Standards-Version|Origin|Maintainer|Section)$/i) { $f{$_}= $v; }
 	    elsif (m/^Uploaders$/i) { ($f{$_}= $v) =~ s/[\r\n]//g; }
 	    elsif (m/^Build-(Depends|Conflicts)(-Indep)?$/i) {
 		my $dep = parsedep(substvars($v),1);
@@ -209,7 +209,7 @@ if ($opmode eq 'build') {
 		$f{$_}= showdep($dep, 1);
 	    }
             elsif (s/^X[BC]*S[BC]*-//i) { $f{$_}= $v; }
-            elsif (m/^(Section|Priority|Files|Bugs)$/i || m/^X[BC]+-/i) { }
+            elsif (m/^(Priority|Files|Bugs)$/i || m/^X[BC]+-/i) { }
             else { &unknown(_g('general section of control info file')); }
         } elsif (s/^C(\d+) //) {
             $i=$1; $p=$fi{"C$i Package"};
