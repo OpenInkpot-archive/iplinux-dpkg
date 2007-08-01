@@ -30,7 +30,7 @@ confflags += --prefix=/usr --sysconfdir=/etc --localstatedir=/var/lib \
 
 ifneq (,$(findstring target,$(SLIND_BUILD_OPTIONS)))
 	confflags += --without-dselect
-	dh_pkgarg := -pdpkg
+	dh_pkgarg := -pdpkg -pdpkg-dev -pstart-stop-daemon
 else
 	dh_pkgarg := -a
 endif
