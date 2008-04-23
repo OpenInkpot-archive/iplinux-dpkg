@@ -1,0 +1,10 @@
+# This file contains the table of known GNU triplets which cannot be deduced
+# from CPU and OS mappings.
+
+#
+# Column 1 is the Debian name for the system.
+# Column 2 is the Debian name for the CPU.
+# Column 3 is the GNU triplet for the given combination of system and CPU.
+#
+# <Debian system> <Debian CPU> <GNU triple>
+linux             armel        arm-linux-gnueabi

@@ -73,6 +73,7 @@ install: build
 	cd build-tree && $(MAKE) DESTDIR="$(CURDIR)/debian/tmp" install
 	install -m 644 debian/archtable debian/tmp/usr/share/dpkg/archtable
 	install -m 644 debian/cputable.slind debian/tmp/usr/share/dpkg/cputable
+	install -m 644 debian/oscputable debian/tmp/usr/share/dpkg/oscputable
 
 # Put together the dpkg and dselect packages
 binary-arch: install

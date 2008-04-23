@@ -20,6 +20,8 @@ arm-linux-gnu			arm
 arm-linux-uclibc		uclibc-arm
 armeb-linux-gnu			armeb
 armeb-linux-uclibc		uclibc-armeb
+arm-linux-gnueabi		armel
+arm-linux-uclibcieabi		uclibc-armel
 hppa-linux-gnu			hppa
 m68k-linux-gnu			m68k
 mips-linux-gnu			mips

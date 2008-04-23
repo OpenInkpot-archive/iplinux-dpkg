@@ -1,3 +1,20 @@
+dpkg (1:1.13.25.slind2) unstable; urgency=low
+
+  armel support added:
+
+  - debian/archtable updated, adding armel.
+
+  - dpkg-architecture reads new file, /usr/share/oscputable, as it is
+    impossible to distinguish two systems with different ABIs, but with
+    the same CPU and OS in current scheme.
+
+    This is stopgap implementataion, as upstream already handles this
+    situation.
+
+  - debian/oscputable added, containing entry for armel.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Tue, 22 Apr 2008 00:22:23 +0700
+
 dpkg (1:1.13.25.slind1) unstable; urgency=low
 
   * Slind version.

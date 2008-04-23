@@ -92,6 +92,17 @@ sub read_ostable {
     close OSTABLE;
 }
 
+sub read_oscputable {
+    open OSCPUTABLE, "$pkgdatadir/oscputable"
+        or return;
+    while (<OSCPUTABLE>) {
+        if (m/^(?!\#)(\S+)\s+(\S+)\s+(\S+)/) {
+            $oscputable{"$1-$2"} = $3;
+        }
+    }
+    close OSCPUTABLE;
+}
+
 sub split_debian {
     local ($_) = @_;
     
@@ -105,6 +116,8 @@ sub split_debian {
 sub debian_to_gnu {
     local ($arch) = @_;
     local ($os, $cpu) = &split_debian($arch);
+
+    return $oscputable{"$os-$cpu"} if exists($oscputable{"$os-$cpu"});
 
     return undef unless exists($cputable{$cpu}) && exists($ostable{$os});
     return join("-", $cputable{$cpu}, $ostable{$os});
@@ -143,6 +156,7 @@ sub gnu_to_debian {
 
 &read_cputable;
 &read_ostable;
+&read_oscputable;
 
 # Check for -L
 if (grep { m/^-L$/ } @ARGV) {
