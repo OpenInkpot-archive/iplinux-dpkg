@@ -118,8 +118,10 @@ else
 	mv debian/dpkg/usr/sbin/start-stop-daemon debian/start-stop-daemon/sbin
 endif
 
+ifneq (,$(findstring nodocs,$(DEB_BUILD_OPTIONS)))
 	dh_installchangelogs -a ChangeLog
 	dh_installdocs -a
+endif
 
 ifeq (,$(findstring target, $(DEB_BUILD_OPTIONS)))
 	install -d debian/dpkg/usr/share/lintian/overrides
@@ -147,8 +149,10 @@ binary-indep: control install
 	dh_testroot -i
 	dh_install --sourcedir=debian/tmp -i -XDpkg/Gettext.pm
 
+ifneq (,$(findstring nodocs,$(DEB_BUILD_OPTIONS)))
 	dh_installchangelogs -i ChangeLog
 	dh_installdocs -i
+endif
 
 	install -d debian/dpkg-dev/usr/share/lintian/overrides
 	install -m 644 debian/dpkg-dev.lintian-overrides \
