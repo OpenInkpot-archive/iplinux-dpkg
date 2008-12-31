@@ -30,8 +30,12 @@ endif
 # Don't enable everything on all platforms
 DEB_HOST_ARCH_OS  ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 
-ifeq ($(DEB_HOST_ARCH_OS),linux)
+ifeq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
+  ifeq ($(DEB_HOST_ARCH_OS),linux)
 	confflags += --with-selinux=static
+  endif
+else
+  confflags += --disable-dselect
 endif
 
 
@@ -70,6 +74,12 @@ ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
 	cd build-tree && $(MAKE) check
 endif
 
+control:
+	dh_testdir
+ifneq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
+	cp -f debian/in/* debian
+endif
+
 # Install the package underneath debian/tmp
 install: check
 	dh_testdir
@@ -79,25 +89,40 @@ install: check
 
 	cd build-tree && $(MAKE) DESTDIR="$(CURDIR)/debian/tmp" install
 
+ifneq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
+	rm $(CURDIR)/debian/tmp/etc/alternatives/README
+	rm $(CURDIR)/debian/tmp/etc/origins/debian
+endif
+
 # Put together the dpkg and dselect packages
-binary-arch: install
+binary-arch: control install
 	dh_testdir -a
 	dh_testroot -a
-	dh_install --sourcedir=debian/tmp -a
-	dh_installlogrotate -a
 
+	dh_install --sourcedir=debian/tmp -a
+ifeq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
+	dh_installlogrotate -a
+endif
+
+ifeq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
 	install -d debian/dpkg/sbin
 	mv debian/dpkg/usr/sbin/start-stop-daemon debian/dpkg/sbin
+else
+	install -d debian/start-stop-daemon/sbin
+	mv debian/dpkg/usr/sbin/start-stop-daemon debian/start-stop-daemon/sbin
+endif
 
 	dh_installchangelogs -a ChangeLog
 	dh_installdocs -a
 
+ifeq (,$(findstring target, $(DEB_BUILD_OPTIONS)))
 	install -d debian/dpkg/usr/share/lintian/overrides
 	install -m 644 debian/dpkg.lintian-overrides \
 		       debian/dpkg/usr/share/lintian/overrides/dpkg
 	install -d debian/dselect/usr/share/lintian/overrides
 	install -m 644 debian/dselect.lintian-overrides \
 		       debian/dselect/usr/share/lintian/overrides/dselect
+endif
 
 	dh_strip -a
 	dh_compress -a
@@ -109,7 +134,7 @@ binary-arch: install
 	dh_builddeb -a
 
 # Put together the dpkg-dev package
-binary-indep: install
+binary-indep: control install
 	dh_testdir -i
 	dh_testroot -i
 	dh_install --sourcedir=debian/tmp -i -XDpkg/Gettext.pm
@@ -140,4 +165,4 @@ clean:
 	dh_clean
 
 
-.PHONY: build check install binary-arch binary-indep binary clean
+.PHONY: build check control install binary-arch binary-indep binary clean

@@ -1,0 +1,33 @@
+Source: dpkg
+Section: core
+Priority: required
+Maintainer: Mikhail Gusarov <dottedmag@dottedmag.net>
+Homepage: http://wiki.debian.org/Teams/Dpkg
+Vcs-Browser: http://git.inkpump.org/dpkg.git/
+Vcs-Git: git://git.inkpump.org/dpkg.git
+Standards-Version: 3.8.0
+Build-Depends: debhelper (>= 4.1.81), pkg-config, po4a (>= 0.33.1),
+ libncursesw5-dev, zlib1g-dev (>= 1:1.1.3-19.1), libbz2-dev, flex,
+ libselinux1-dev (>= 1.28-4) [!hurd-i386 !kfreebsd-i386 !kfreebsd-amd64],
+ libtimedate-perl, libio-string-perl, quilt
+
+Package: dpkg
+Architecture: any
+Pre-Depends: ${shlibs:Depends}, coreutils (>= 5.93-1)
+Suggests: apt
+Description: Debian package management system
+ This package privides the low-level infrastructure for handling the
+ installation and removal of Debian software packages.
+ .
+ This package is modified by Inkpump to support uclibc architectures and
+ cross-compilation.
+
+Package: start-stop-daemon
+Architecture: any
+Pre-Depends: ${shlibs:Depends}, coreutils (>= 5.93-1)
+Description: Utility to start and stop system daemon programs
+ start-stop-daemon is used to control the creation and termination of
+ system-level processes.
+ .
+ This tool is packaged separately from dpkg in Inkpump to avoid circular
+ dependencies.

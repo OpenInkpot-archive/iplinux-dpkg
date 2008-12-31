@@ -1,0 +1,19 @@
+../dpkg.cfg etc/dpkg
+../archtable usr/share/dpkg
+
+etc/alternatives
+etc/dpkg/origins
+usr/bin/dpkg
+usr/bin/dpkg-deb
+usr/bin/dpkg-query
+usr/bin/dpkg-trigger
+usr/sbin/dpkg-divert
+usr/sbin/dpkg-statoverride
+usr/sbin/update-alternatives
+usr/share/dpkg
+usr/share/perl5/Dpkg.pm
+usr/share/perl5/Dpkg/Gettext.pm
+var/lib/dpkg/alternatives
+var/lib/dpkg/info
+var/lib/dpkg/parts
+var/lib/dpkg/updates

@@ -1,19 +1,18 @@
+# Warning: this file will be replaced during cross-build by the one from in/ directory.
 Source: dpkg
-Section: admin
+Section: host-tools
 Priority: required
-Maintainer: Dpkg Developers <debian-dpkg@lists.debian.org>
-Uploaders: Frank Lichtenheld <djpig@debian.org>,
- Guillem Jover <guillem@debian.org>, Raphael Hertzog <hertzog@debian.org>
-Origin: debian
-Bugs: debbugs://bugs.debian.org
+Maintainer: Mikhail Gusarov <dottedmag@dottedmag.net>
 Homepage: http://wiki.debian.org/Teams/Dpkg
-Vcs-Browser: http://git.debian.org/?p=dpkg/dpkg.git
-Vcs-Git: git://git.debian.org/git/dpkg/dpkg.git
-Standards-Version: 3.7.3
+Origin: Inkpump
+Bugs: trac://inkpump.org/
+Vcs-Browser: http://git.inkpump.org/dpkg.git/
+Vcs-Git: git://git.inkpump.org/dpkg.git
+Standards-Version: 3.8.0
 Build-Depends: debhelper (>= 4.1.81), pkg-config, po4a (>= 0.33.1),
  libncursesw5-dev, zlib1g-dev (>= 1:1.1.3-19.1), libbz2-dev, flex,
  libselinux1-dev (>= 1.28-4) [!hurd-i386 !kfreebsd-i386 !kfreebsd-amd64],
- libtimedate-perl, libio-string-perl
+ libtimedate-perl, libio-string-perl, autoconf, automake, cvs
 
 Package: dpkg
 Architecture: any
@@ -28,9 +27,11 @@ Description: Debian package management system
  installation and removal of Debian software packages.
  .
  For Debian package development tools, install dpkg-dev.
+ .
+ This package is modified by Inkpump to support uclibc architectures and
+ cross-compilation.
 
 Package: dpkg-dev
-Section: utils
 Priority: optional
 Architecture: all
 Depends: dpkg (>= 1.14.6), perl5, perl-modules, cpio (>= 2.4.2-2), bzip2, lzma,
@@ -45,6 +46,9 @@ Description: Debian package development tools
  .
  Most Debian source packages will require additional tools to build;
  for example, most packages need make and the C compiler gcc.
+ .
+ This package is modified by Inkpump to support uclibc architectures and
+ cross-compilation.
 
 Package: dselect
 Priority: optional
@@ -57,3 +61,6 @@ Description: Debian package management front-end
  .
  Many users find dselect intimidating and new users may prefer to use
  apt-based user interfaces.
+ .
+ This package is modified by Inkpump to support uclibc architectures and
+ cross-compilation.
