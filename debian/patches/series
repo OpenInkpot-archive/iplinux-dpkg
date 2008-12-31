@@ -2,3 +2,4 @@
 02-cross-shell-architecture-override.patch
 03-dpkg-buildpackage-always-check-builddeps.patch
 04-disable-dpkg-localization.patch
+05-fix-va-copy-test-for-crosscompilation.patch

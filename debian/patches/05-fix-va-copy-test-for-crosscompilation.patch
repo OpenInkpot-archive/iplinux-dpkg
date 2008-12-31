@@ -1,0 +1,13 @@
+Index: dpkg/m4/funcs.m4
+===================================================================
+--- dpkg.orig/m4/funcs.m4	2008-12-27 03:34:07.000000000 +0600
++++ dpkg/m4/funcs.m4	2008-12-27 03:35:13.000000000 +0600
+@@ -5,7 +5,7 @@
+ # Define HAVE_VA_COPY if we have va_copy, fail if they can't be assigned
+ AC_DEFUN([DPKG_FUNC_VA_COPY],
+ [AC_CACHE_CHECK([for va_copy], [dpkg_cv_va_copy],
+-[AC_TRY_RUN(
++[AC_COMPILE_IFELSE(
+ [#include <stdarg.h>
+ main() {
+ va_list v1, v2;
