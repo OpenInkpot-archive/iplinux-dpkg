@@ -2,6 +2,8 @@
 # debian/rules for the dpkg suite.
 # Copyright © 2004 Scott James Remnant <scott@netsplit.com>
 
+include /usr/share/quilt/quilt.make
+
 WFLAGS := -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 
 CFLAGS = -g $(WFLAGS)
@@ -40,7 +42,7 @@ endif
 
 
 # Create configure script if necessary, automake handles rebuilding it.
-configure:
+configure: patch
 	dh_testdir
 
 	autoreconf -v -i
@@ -158,7 +160,9 @@ binary: binary-arch binary-indep
 
 
 # Clean up the mess we made
-clean:
+clean: clean-tree unpatch
+
+clean-tree:
 	dh_testdir
 
 	rm -rf build-tree
