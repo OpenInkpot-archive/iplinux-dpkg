@@ -1,0 +1,20 @@
+Index: dpkg/ostable
+===================================================================
+--- dpkg.orig/ostable	2008-12-27 03:02:11.000000000 +0600
++++ dpkg/ostable	2008-12-27 03:02:33.000000000 +0600
+@@ -25,3 +25,5 @@
+ bsd-netbsd	netbsd		netbsd[^-]*
+ bsd-openbsd	openbsd		openbsd[^-]*
+ sysv-solaris	solaris		solaris[^-]*
++uclibc-linux	linux-uclibc	linux[^-]*-uclibc
++uclibceabi-linux	linux-uclibceabi	linux[^-]*-uclibceabi
+Index: dpkg/triplettable
+===================================================================
+--- dpkg.orig/triplettable	2008-12-27 03:02:11.000000000 +0600
++++ dpkg/triplettable	2008-12-27 03:02:27.000000000 +0600
+@@ -14,3 +14,5 @@
+ bsd-netbsd-<cpu>	netbsd-<cpu>
+ bsd-darwin-<cpu>	darwin-<cpu>
+ sysv-solaris-<cpu>	solaris-<cpu>
++uclibc-linux-<cpu>	uclibc-<cpu>
++uclibceabi-linux-arm	uclibc-armel
