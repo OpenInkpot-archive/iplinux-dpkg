@@ -1,3 +1,22 @@
+dpkg (1.14.23.oi1) asimov; urgency=low
+
+  * Inkpump build.
+    - Section adjusted
+    - Maintainer adjusted
+    - Vcs-* adjusted
+    - /etc/dpkg/origins/inkpump added
+  * On-device (target) version added.
+    - dpkg localization disabled
+    - dselect and dpkg-dev disabled
+  * Using quilt for patches
+  * uclibc architectures added
+  * cross-shell support added
+  * dpkg-buildpackage no longer disables dependencies check on
+    cross-compilation
+  * Cross-compilation configure fixes
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Sat, 27 Dec 2008 18:34:56 +0600
+
 dpkg (1.14.23) unstable; urgency=low
 
   [ Raphael Hertzog ]
