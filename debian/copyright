@@ -29,6 +29,11 @@ Copyright © 1994 Carl Streeter <streeter@cae.wisc.edu>
 Copyright © 1994 Matt Welsh <mdw@sunsite.unc.edu>
 Copyright © 1994 Ian Murdock <imurdock@debian.org>
 
+Includes Slind patches and packaging Copyright © 2005-2006 Siemens AG.
+Includes Inkpump patches and packaging:
+Copyright © 2007-2008 Mikhail Gusarov <dottedmag@openinkpot.org>
+Copyright © 2008 Oleg Leschinsky <helge@openinkpot.org>
+
 Includes public domain MD5 code:
 	lib/md5.c and lib/md5.h originally written by Colin Plumb,
 
