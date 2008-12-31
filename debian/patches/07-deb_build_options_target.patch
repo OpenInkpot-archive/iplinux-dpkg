@@ -1,0 +1,16 @@
+Index: dpkg/scripts/dpkg-buildpackage.pl
+===================================================================
+--- dpkg.orig/scripts/dpkg-buildpackage.pl	2008-12-28 01:03:41.000000000 +0600
++++ dpkg/scripts/dpkg-buildpackage.pl	2008-12-28 01:03:41.000000000 +0600
+@@ -252,6 +252,11 @@
+ 	$ENV{MAKEFLAGS} .= " -j$parallel";
+     }
+     $build_opts->{parallel} = $parallel;
++}
++if ($targetarch) {
++    $build_opts->{target} = '';
++}
++if ($parallel || $targetarch) {
+     Dpkg::BuildOptions::set($build_opts);
+ }
+ 
