@@ -1,6 +1,6 @@
 # Warning: this file will be replaced during cross-build by the one from in/ directory.
 Source: dpkg
-Section: host-tools
+Section: host/tools
 Priority: required
 Maintainer: Mikhail Gusarov <dottedmag@dottedmag.net>
 Homepage: http://wiki.debian.org/Teams/Dpkg
