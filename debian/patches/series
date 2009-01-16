@@ -1,3 +1,4 @@
+08-disable-useless-warning-in-dpkg-architecture.patch
 01-uclibc-architectures.patch
 02-cross-shell-architecture-override.patch
 03-dpkg-buildpackage-always-check-builddeps.patch

@@ -1,0 +1,16 @@
+Index: dpkg/scripts/dpkg-architecture.pl
+===================================================================
+--- dpkg.orig/scripts/dpkg-architecture.pl	2009-01-17 04:12:06.000000000 +0600
++++ dpkg/scripts/dpkg-architecture.pl	2009-01-17 04:12:08.000000000 +0600
+@@ -168,11 +168,6 @@
+ 
+ my $gcc = get_gcc_host_gnu_type();
+ 
+-warning(_g("Specified GNU system type %s does not match gcc system type %s."),
+-        $v{DEB_HOST_GNU_TYPE}, $gcc)
+-    if !($req_is_arch or $req_eq_arch) &&
+-       ($gcc ne '') && ($gcc ne $v{DEB_HOST_GNU_TYPE});
+-
+ # Split the Debian and GNU names
+ my $abi;
+ 
