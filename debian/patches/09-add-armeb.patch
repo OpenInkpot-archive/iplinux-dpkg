@@ -1,0 +1,10 @@
+Index: dpkg/triplettable
+===================================================================
+--- dpkg.orig/triplettable	2009-01-17 06:46:22.000000000 +0600
++++ dpkg/triplettable	2009-01-17 06:47:37.000000000 +0600
+@@ -16,3 +16,5 @@
+ sysv-solaris-<cpu>	solaris-<cpu>
+ uclibc-linux-<cpu>	uclibc-<cpu>
+ uclibceabi-linux-arm	uclibc-armel
++uclibceabi-linux-armeb	uclibc-armeb
++gnueabi-linux-armeb	armeb
