@@ -95,7 +95,7 @@ install: check
 
 ifneq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
 	rm $(CURDIR)/debian/tmp/etc/alternatives/README
-	rm $(CURDIR)/debian/tmp/etc/origins/debian
+	rm $(CURDIR)/debian/tmp/etc/dpkg/origins/debian
 endif
 
 # Put together the dpkg and dselect packages
@@ -110,10 +110,10 @@ endif
 
 ifeq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
 	install -d debian/dpkg/sbin
-	mv debian/dpkg/usr/sbin/start-stop-daemon debian/dpkg/sbin
+	mv debian/tmp/usr/sbin/start-stop-daemon debian/dpkg/sbin
 else
 	install -d debian/start-stop-daemon/sbin
-	mv debian/dpkg/usr/sbin/start-stop-daemon debian/start-stop-daemon/sbin
+	mv debian/tmp/usr/sbin/start-stop-daemon debian/start-stop-daemon/sbin
 endif
 
 ifneq (,$(findstring nodocs,$(DEB_BUILD_OPTIONS)))
