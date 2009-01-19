@@ -37,7 +37,7 @@ endif
 DEB_HOST_ARCH_OS  ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 
 ifneq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
-  confflags += --disable-dselect
+  confflags += --without-dselect
 endif
 
 confflags += --disable-selinux
