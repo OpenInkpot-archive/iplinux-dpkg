@@ -62,7 +62,7 @@ build-tree/config.status: configure
 		--sysconfdir=/etc \
 		--localstatedir=/var/lib \
 		--with-zlib=static \
-		--with-bz2=static
+		--without-bz2
 
 # Build the package in build-tree
 build: build-tree/config.status
