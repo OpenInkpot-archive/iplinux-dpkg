@@ -36,13 +36,11 @@ endif
 # Don't enable everything on all platforms
 DEB_HOST_ARCH_OS  ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 
-ifeq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
-  ifeq ($(DEB_HOST_ARCH_OS),linux)
-	confflags += --with-selinux=static
-  endif
-else
+ifneq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
   confflags += --disable-dselect
 endif
+
+confflags += --disable-selinux
 
 
 # Create configure script if necessary, automake handles rebuilding it.
