@@ -15,7 +15,7 @@ Build-Depends: debhelper (>= 4.1.81), pkg-config, po4a (>= 0.33.1),
  libtimedate-perl, libio-string-perl, quilt, autoconf, automake, cvs
 XCS-Cross-Mode: both
 XCS-Cross-Host-Build-Depends: debhelper (>= 4.1.81), pkg-config, po4a (>= 0.33.1), flex, libtimedate-perl, libio-string-perl, quilt, autoconf, automake, cvs
-XCS-Cross-Build-Depends: libz1-dev, libbz2-dev
+XCS-Cross-Build-Depends: libz1-dev
 
 Package: dpkg
 Architecture: any
