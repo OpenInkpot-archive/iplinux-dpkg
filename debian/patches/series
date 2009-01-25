@@ -7,3 +7,4 @@
 06-inkpump-origin-file.patch
 07-deb_build_options_target.patch
 09-add-armeb.patch
+10-disable-install-info-check.patch
