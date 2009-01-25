@@ -43,7 +43,7 @@ ifeq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
   endif
 else
   confflags += --without-dselect
-  confflags += --disable-selinux
+  confflags += --without-selinux
   confflags += --without-bz2
 endif
 
@@ -67,7 +67,7 @@ build-tree/config.status: configure
 		--infodir=\$${datadir}/info \
 		--sysconfdir=/etc \
 		--localstatedir=/var/lib \
-		--with-zlib=static \
+		--with-zlib=static
 
 # Build the package in build-tree
 build: build-tree/config.status
