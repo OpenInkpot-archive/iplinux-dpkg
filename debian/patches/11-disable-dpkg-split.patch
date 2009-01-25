@@ -1,0 +1,46 @@
+Index: dpkg/src/processarc.c
+===================================================================
+--- dpkg.orig/src/processarc.c	2009-01-25 23:37:19.000000000 +0600
++++ dpkg/src/processarc.c	2009-01-25 23:38:05.000000000 +0600
+@@ -101,41 +101,6 @@
+ 
+   if (stat(filename,&stab)) ohshite(_("cannot access archive"));
+ 
+-  if (!f_noact) {
+-    /* We can't `tentatively-reassemble' packages. */
+-    if (!reasmbuf) {
+-      reasmbuf= m_malloc(admindirlen+sizeof(REASSEMBLETMP)+5);
+-      strcpy(reasmbuf,admindir);
+-      strcat(reasmbuf,"/" REASSEMBLETMP);
+-    }
+-    if (unlink(reasmbuf) && errno != ENOENT)
+-      ohshite(_("error ensuring `%.250s' doesn't exist"),reasmbuf);
+-    push_cleanup(cu_pathname, ~0, NULL, 0, 1, (void *)reasmbuf);
+-    c1= m_fork();
+-    if (!c1) {
+-      execlp(SPLITTER, SPLITTER, "-Qao", reasmbuf, filename, NULL);
+-      ohshite(_("failed to exec dpkg-split to see if it's part of a multiparter"));
+-    }
+-    while ((r= waitpid(c1,&status,0)) == -1 && errno == EINTR);
+-    if (r != c1) { onerr_abort++; ohshite(_("wait for dpkg-split failed")); }
+-    switch (WIFEXITED(status) ? WEXITSTATUS(status) : -1) {
+-    case 0:
+-      /* It was a part - is it complete ? */
+-      if (!stat(reasmbuf,&stab)) { /* Yes. */
+-        filename= reasmbuf;
+-        pfilename= _("reassembled package file");
+-        break;
+-      } else if (errno == ENOENT) { /* No.  That's it, we skip it. */
+-        return;
+-      }
+-    case 1:
+-      /* No, it wasn't a part. */
+-      break;
+-    default:
+-      checksubprocerr(status,SPLITTER,0);
+-    }
+-  }
+-  
+   /* Verify the package. */
+   if (!f_nodebsig && (stat(DEBSIGVERIFY, &stab)==0)) {
+     printf(_("Authenticating %s ...\n"), filename);

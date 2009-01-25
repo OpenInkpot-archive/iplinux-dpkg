@@ -1,3 +1,4 @@
+11-disable-dpkg-split.patch
 08-disable-useless-warning-in-dpkg-architecture.patch
 01-uclibc-architectures.patch
 02-cross-shell-architecture-override.patch
