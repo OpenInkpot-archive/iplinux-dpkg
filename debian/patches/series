@@ -1,5 +1,3 @@
-11-disable-dpkg-split.patch
-08-disable-useless-warning-in-dpkg-architecture.patch
 01-uclibc-architectures.patch
 02-cross-shell-architecture-override.patch
 03-dpkg-buildpackage-always-check-builddeps.patch
@@ -7,5 +5,7 @@
 05-fix-va-copy-test-for-crosscompilation.patch
 06-inkpump-origin-file.patch
 07-deb_build_options_target.patch
+08-disable-useless-warning-in-dpkg-architecture.patch
 09-add-armeb.patch
 10-disable-install-info-check.patch
+11-disable-dpkg-split.patch
