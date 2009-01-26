@@ -1,0 +1,27 @@
+Index: dpkg/scripts/Dpkg/Shlibs.pm
+===================================================================
+--- dpkg.orig/scripts/Dpkg/Shlibs.pm	2009-01-26 05:59:18.000000000 +0600
++++ dpkg/scripts/Dpkg/Shlibs.pm	2009-01-26 05:59:23.000000000 +0600
+@@ -42,10 +42,10 @@
+ if ($ENV{GCC_TARGET}) {
+     $crossprefix = debarch_to_gnutriplet($ENV{GCC_TARGET});
+ }
+-if ($ENV{DEB_TARGET_GNU_TYPE} and
+-    ($ENV{DEB_TARGET_GNU_TYPE} ne $ENV{DEB_BUILD_GNU_TYPE}))
++if ($ENV{DEB_HOST_GNU_TYPE} and
++    ($ENV{DEB_HOST_GNU_TYPE} ne $ENV{DEB_BUILD_GNU_TYPE}))
+ {
+-    $crossprefix = $ENV{DEB_TARGET_GNU_TYPE};
++    $crossprefix = $ENV{DEB_HOST_GNU_TYPE};
+ }
+ # host for normal cross builds.
+ if (get_build_arch() ne get_host_arch()) {
+@@ -58,7 +58,7 @@
+             "/$crossprefix/lib64", "/usr/$crossprefix/lib64";
+ }
+ 
+-our @librarypaths = (DEFAULT_LIBRARY_PATH, @crosslibrarypaths);
++our @librarypaths = (@crosslibrarypaths, DEFAULT_LIBRARY_PATH);
+ 
+ # Update library paths with LD_LIBRARY_PATH
+ if ($ENV{LD_LIBRARY_PATH}) {

@@ -8,4 +8,4 @@
 08-disable-useless-warning-in-dpkg-architecture.patch
 10-disable-install-info-check.patch
 11-disable-dpkg-split.patch
-
+12-fix-dpkg-shlibdeps.patch
