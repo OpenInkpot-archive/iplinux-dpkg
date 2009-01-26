@@ -1,0 +1,17 @@
+Index: dpkg/scripts/dpkg-architecture.pl
+===================================================================
+--- dpkg.orig/scripts/dpkg-architecture.pl	2009-01-26 06:06:52.000000000 +0600
++++ dpkg/scripts/dpkg-architecture.pl	2009-01-26 06:06:15.000000000 +0600
+@@ -136,6 +136,12 @@
+ $v{DEB_HOST_ARCH} = get_raw_host_arch();
+ $v{DEB_HOST_GNU_TYPE} = debarch_to_gnutriplet($v{DEB_HOST_ARCH});
+ 
++if ($req_host_arch ne '' || $req_host_gnu_type ne '') {
++    # Mangling build architecture.
++    my ($cpu, $kernel, $system) = split /-/, $v{DEB_BUILD_GNU_TYPE};
++    $v{DEB_BUILD_GNU_TYPE} = "${cpu}-build-${kernel}-${system}";
++}
++
+ # Set user values:
+ 
+ if ($req_host_arch ne '' && $req_host_gnu_type eq '') {
