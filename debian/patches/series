@@ -1,4 +1,4 @@
-01-uclibc-architectures.patch
+01-architectures.patch
 02-cross-shell-architecture-override.patch
 03-dpkg-buildpackage-always-check-builddeps.patch
 04-disable-dpkg-localization.patch
@@ -6,6 +6,6 @@
 06-inkpump-origin-file.patch
 07-deb_build_options_target.patch
 08-disable-useless-warning-in-dpkg-architecture.patch
-09-add-armeb.patch
 10-disable-install-info-check.patch
 11-disable-dpkg-split.patch
+
