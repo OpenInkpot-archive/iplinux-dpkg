@@ -9,4 +9,4 @@
 10-disable-install-info-check.patch
 11-disable-dpkg-split.patch
 12-fix-dpkg-shlibdeps.patch
-13-mangle-build-architecture-if-cross.patch
+13-mangle-host-architecture-if-cross.patch
