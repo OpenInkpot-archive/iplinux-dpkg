@@ -1,0 +1,130 @@
+Index: dpkg/scripts/dpkg-architecture.pl
+===================================================================
+--- dpkg.orig/scripts/dpkg-architecture.pl	2009-02-06 04:00:52.000000000 +0600
++++ dpkg/scripts/dpkg-architecture.pl	2009-02-06 04:00:59.000000000 +0600
+@@ -27,7 +27,8 @@
+ use Dpkg::ErrorHandling qw(warning syserr usageerr);
+ use Dpkg::Arch qw(get_raw_build_arch get_raw_host_arch get_gcc_host_gnu_type
+                   get_valid_arches debarch_eq debarch_is debarch_to_debtriplet
+-                  debarch_to_gnutriplet gnutriplet_to_debarch);
++                  hostdebarch_to_gnutriplet builddebarch_to_gnutriplet
++                  gnutriplet_to_debarch);
+ 
+ textdomain("dpkg-dev");
+ 
+@@ -131,15 +132,15 @@
+                  DEB_HOST_GNU_CPU DEB_HOST_GNU_SYSTEM DEB_HOST_GNU_TYPE);
+ 
+ $v{DEB_BUILD_ARCH} = get_raw_build_arch();
+-$v{DEB_BUILD_GNU_TYPE} = debarch_to_gnutriplet($v{DEB_BUILD_ARCH});
++$v{DEB_BUILD_GNU_TYPE} = builddebarch_to_gnutriplet($v{DEB_BUILD_ARCH});
+ 
+ $v{DEB_HOST_ARCH} = get_raw_host_arch();
+-$v{DEB_HOST_GNU_TYPE} = debarch_to_gnutriplet($v{DEB_HOST_ARCH});
++$v{DEB_HOST_GNU_TYPE} = hostdebarch_to_gnutriplet($v{DEB_HOST_ARCH});
+ 
+ # Set user values:
+ 
+ if ($req_host_arch ne '' && $req_host_gnu_type eq '') {
+-    $req_host_gnu_type = debarch_to_gnutriplet($req_host_arch);
++    $req_host_gnu_type = hostdebarch_to_gnutriplet($req_host_arch);
+     die (sprintf(_g("unknown Debian architecture %s, you must specify " .
+                     "GNU system type, too"), $req_host_arch))
+         unless defined $req_host_gnu_type;
+@@ -153,7 +154,7 @@
+ }
+ 
+ if ($req_host_gnu_type ne '' && $req_host_arch ne '') {
+-    my $dfl_host_gnu_type = debarch_to_gnutriplet($req_host_arch);
++    my $dfl_host_gnu_type = hostdebarch_to_gnutriplet($req_host_arch);
+     die (sprintf(_g("unknown default GNU system type for Debian architecture %s"),
+                  $req_host_arch))
+ 	unless defined $dfl_host_gnu_type;
+Index: dpkg/scripts/Dpkg/Arch.pm
+===================================================================
+--- dpkg.orig/scripts/Dpkg/Arch.pm	2009-02-06 04:00:41.000000000 +0600
++++ dpkg/scripts/Dpkg/Arch.pm	2009-02-06 04:00:59.000000000 +0600
+@@ -8,7 +8,8 @@
+ our @EXPORT_OK = qw(get_raw_build_arch get_raw_host_arch
+                     get_build_arch get_host_arch get_gcc_host_gnu_type
+                     get_valid_arches debarch_eq debarch_is
+-                    debarch_to_gnutriplet gnutriplet_to_debarch
++                    hostdebarch_to_gnutriplet builddebarch_to_gnutriplet
++                    gnutriplet_to_debarch
+                     debtriplet_to_gnutriplet gnutriplet_to_debtriplet
+                     debtriplet_to_debarch debarch_to_debtriplet);
+ 
+@@ -257,7 +258,16 @@
+     }
+ }
+ 
+-sub debarch_to_gnutriplet($)
++sub hostdebarch_to_gnutriplet($)
++{
++    my ($arch) = @_;
++
++    my $gnutriplet = debtriplet_to_gnutriplet(debarch_to_debtriplet($arch));
++    my ($cpu, $kernel, $system) = split /-/, $gnutriplet;
++    return "${cpu}-ip-${kernel}-${system}";
++}
++
++sub builddebarch_to_gnutriplet($)
+ {
+     my ($arch) = @_;
+ 
+Index: dpkg/scripts/dpkg-buildpackage.pl
+===================================================================
+--- dpkg.orig/scripts/dpkg-buildpackage.pl	2009-02-06 04:00:50.000000000 +0600
++++ dpkg/scripts/dpkg-buildpackage.pl	2009-02-06 04:00:59.000000000 +0600
+@@ -14,7 +14,7 @@
+ use Dpkg::Compression;
+ use Dpkg::Version qw(check_version);
+ use Dpkg::Changelog qw(parse_changelog);
+-use Dpkg::Arch qw(get_build_arch debarch_to_gnutriplet);
++use Dpkg::Arch qw(get_build_arch hostdebarch_to_gnutriplet builddebarch_to_gnutriplet);
+ 
+ textdomain("dpkg-dev");
+ 
+@@ -315,9 +315,9 @@
+ 
+ # In case of cross-compilation, give sensible default search path
+ # for some widely used tools
+-$targetgnusystem = debarch_to_gnutriplet($targetarch) if $targetarch;
++$targetgnusystem = hostdebarch_to_gnutriplet($targetarch) if $targetarch;
+ if ($targetgnusystem and
+-    ($targetgnusystem ne debarch_to_gnutriplet(get_build_arch())))
++    ($targetgnusystem ne builddebarch_to_gnutriplet(get_build_arch())))
+ {
+    $ENV{PKG_CONFIG_LIBDIR} ||= "/usr/$targetgnusystem/lib/pkgconfig/:" .
+                                "/usr/share/pkgconfig/";
+Index: dpkg/scripts/Dpkg/Shlibs.pm
+===================================================================
+--- dpkg.orig/scripts/Dpkg/Shlibs.pm	2009-02-06 04:00:47.000000000 +0600
++++ dpkg/scripts/Dpkg/Shlibs.pm	2009-02-06 04:02:54.000000000 +0600
+@@ -28,7 +28,7 @@
+ use Dpkg::ErrorHandling qw(syserr);
+ use Dpkg::Shlibs::Objdump;
+ use Dpkg::Path qw(resolve_symlink canonpath);
+-use Dpkg::Arch qw(debarch_to_gnutriplet get_build_arch get_host_arch);
++use Dpkg::Arch qw(hostdebarch_to_gnutriplet get_build_arch get_host_arch);
+ 
+ use constant DEFAULT_LIBRARY_PATH =>
+     qw(/lib /usr/lib /lib32 /usr/lib32 /lib64 /usr/lib64
+@@ -40,7 +40,7 @@
+ my $crossprefix;
+ # Detect cross compiler builds
+ if ($ENV{GCC_TARGET}) {
+-    $crossprefix = debarch_to_gnutriplet($ENV{GCC_TARGET});
++    $crossprefix = hostdebarch_to_gnutriplet($ENV{GCC_TARGET});
+ }
+ if ($ENV{DEB_HOST_GNU_TYPE} and
+     ($ENV{DEB_HOST_GNU_TYPE} ne $ENV{DEB_BUILD_GNU_TYPE}))
+@@ -49,7 +49,7 @@
+ }
+ # host for normal cross builds.
+ if (get_build_arch() ne get_host_arch()) {
+-    $crossprefix = debarch_to_gnutriplet(get_host_arch());
++    $crossprefix = hostdebarch_to_gnutriplet(get_host_arch());
+ }
+ # Define list of directories containing crossbuilt libraries
+ if ($crossprefix) {
