@@ -1,10 +1,10 @@
 dpkg (1.14.25.ip1) asimov; urgency=low
 
-  * Inkpump build.
+  * IPlinux build.
     - Section adjusted
     - Maintainer adjusted
     - Vcs-* adjusted
-    - /etc/dpkg/origins/inkpump added
+    - /etc/dpkg/origins/iplinux added
   * On-device (target) version added.
     - dpkg localization disabled
     - dselect and dpkg-dev disabled

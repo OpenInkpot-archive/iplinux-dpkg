@@ -5,9 +5,7 @@ Priority: required
 Maintainer: Mikhail Gusarov <dottedmag@dottedmag.net>
 Homepage: http://wiki.debian.org/Teams/Dpkg
 Origin: Inkpump
-Bugs: trac://inkpump.org/
-Vcs-Browser: http://git.inkpump.org/dpkg.git/
-Vcs-Git: git://git.inkpump.org/dpkg.git
+Bugs: trac://iplinux.org/
 Standards-Version: 3.8.0
 Build-Depends: debhelper (>= 4.1.81), pkg-config, po4a (>= 0.33.1),
  libncursesw5-dev, zlib1g-dev (>= 1:1.1.3-19.1), libbz2-dev, flex,
