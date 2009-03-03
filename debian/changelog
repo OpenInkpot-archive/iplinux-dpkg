@@ -1,3 +1,10 @@
+dpkg (1.14.25.ip2) asimov; urgency=low
+
+  * Added processing of XCS-Cross-[Host-]Build-Depends in
+    dpkg-checkbuilddeps.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Tue, 03 Mar 2009 22:46:35 +0600
+
 dpkg (1.14.25.ip1) asimov; urgency=low
 
   * IPlinux build.

@@ -20,6 +20,7 @@ sub usage {
 
 Options:
   control-file   control file to process (default: debian/control).
+  --arch=arch>   target architecture
   -B             binary-only, ignore -Indep.
   -d build-deps  use given string as build dependencies instead of
                  retrieving them from control file
@@ -33,8 +34,10 @@ Options:
 
 my $binary_only=0;
 my $want_help=0;
+my $target_arch=undef;
 my ($bd_value, $bc_value);
-if (! GetOptions('-B' => \$binary_only,
+if (! GetOptions('--arch=s' => \$target_arch,
+                 '-B' => \$binary_only,
 		 '-h' => \$want_help,
 		 '-d=s' => \$bd_value,
 		 '-c=s' => \$bc_value,
@@ -55,18 +58,32 @@ my $fields = $control->get_source();
 my $facts = parse_status("$admindir/status");
 
 unless (defined($bd_value) or defined($bc_value)) {
-    $bd_value = 'build-essential';
-    $bd_value .= ", " . $fields->{"Build-Depends"} if defined $fields->{"Build-Depends"};
-    if (not $binary_only and defined $fields->{"Build-Depends-Indep"}) {
-	$bd_value .= ", " . $fields->{"Build-Depends-Indep"};
-    }
-    $bc_value = $fields->{"Build-Conflicts"} if defined $fields->{"Build-Conflicts"};
-    if (not $binary_only and defined $fields->{"Build-Conflicts-Indep"}) {
-	if ($bc_value) {
-	    $bc_value .= ", " . $fields->{"Build-Conflicts-Indep"};
-	} else {
-	    $bc_value = $fields->{"Build-Conflicts-Indep"};
-	}
+    if (defined($target_arch)) {
+        $bd_value = $target_arch . '-cross-toolchain';
+        $bd_value .= ', ' . $fields->{'XCS-Cross-Host-Build-Depends'}
+            if defined $fields->{'XCS-Cross-Host-Build-Depensd'};
+        if (defined($fields->{'XCS-Cross-Build-Depends'})) {
+            # foo (>= 2.0), bar ---> foo-armel-cross (>= 2.0), bar-armel-cross
+            for my $build_depend (split /,\s*/, $fields->{'XCS-Cross-Build-Depends'}) {
+                my @b = split / /, $build_depend;
+                $b[0] .= '-' . $target_arch . '-cross';
+                $bd_value .= ', ' . join(' ', @b);
+            }
+        }
+    } else {
+        $bd_value = 'build-essential';
+        $bd_value .= ", " . $fields->{"Build-Depends"} if defined $fields->{"Build-Depends"};
+        if (not $binary_only and defined $fields->{"Build-Depends-Indep"}) {
+            $bd_value .= ", " . $fields->{"Build-Depends-Indep"};
+        }
+        $bc_value = $fields->{"Build-Conflicts"} if defined $fields->{"Build-Conflicts"};
+        if (not $binary_only and defined $fields->{"Build-Conflicts-Indep"}) {
+            if ($bc_value) {
+                $bc_value .= ", " . $fields->{"Build-Conflicts-Indep"};
+            } else {
+                $bc_value = $fields->{"Build-Conflicts-Indep"};
+            }
+        }
     }
 }
 my (@unmet, @conflicts);
