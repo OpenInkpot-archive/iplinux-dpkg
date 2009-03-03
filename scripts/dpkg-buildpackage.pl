@@ -335,6 +335,9 @@ if ($checkbuilddep) {
     if ($admindir) {
 	push @checkbuilddep_args, "--admindir=$admindir";
     }
+    if ($targetarch) {
+        push @checkbuilddep_args, "--arch=$targetarch";
+    }
 
     if (system('dpkg-checkbuilddeps', @checkbuilddep_args)) {
 	warning(_g("Build dependencies/conflicts unsatisfied; aborting."));

@@ -1,3 +1,10 @@
+dpkg (1.14.25.ip3) asimov; urgency=low
+
+  * Fixed calling dpkg-checkbuilddeps from dpkg-buildpackage for
+    cross-builds.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Wed, 04 Mar 2009 02:16:09 +0600
+
 dpkg (1.14.25.ip2) asimov; urgency=low
 
   * Added processing of XCS-Cross-[Host-]Build-Depends in
