@@ -1,3 +1,9 @@
+dpkg (1.14.25.ip4) asimov; urgency=low
+
+  * Disabled testsuite.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Sun, 08 Mar 2009 22:24:59 +0600
+
 dpkg (1.14.25.ip3) asimov; urgency=low
 
   * Fixed calling dpkg-checkbuilddeps from dpkg-buildpackage for
