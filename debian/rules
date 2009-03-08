@@ -79,10 +79,6 @@ build: build-tree/config.status
 check: build
 	dh_testdir
 
-ifeq (,$(findstring nocheck,$(DEB_BUILD_OPTIONS)))
-	cd build-tree && $(MAKE) check
-endif
-
 control:
 	dh_testdir
 ifneq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
