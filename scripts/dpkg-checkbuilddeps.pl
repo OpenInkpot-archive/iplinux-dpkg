@@ -61,7 +61,7 @@ unless (defined($bd_value) or defined($bc_value)) {
     if (defined($target_arch)) {
         $bd_value = $target_arch . '-cross-toolchain';
         $bd_value .= ', ' . $fields->{'XCS-Cross-Host-Build-Depends'}
-            if defined $fields->{'XCS-Cross-Host-Build-Depensd'};
+            if defined $fields->{'XCS-Cross-Host-Build-Depends'};
         if (defined($fields->{'XCS-Cross-Build-Depends'})) {
             # foo (>= 2.0), bar ---> foo-armel-cross (>= 2.0), bar-armel-cross
             for my $build_depend (split /,\s*/, $fields->{'XCS-Cross-Build-Depends'}) {
