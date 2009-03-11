@@ -1,3 +1,10 @@
+dpkg (1.14.25.ip5) asimov; urgency=low
+
+  * Fixed typo which prevented dpkg-checkbuilddeps from checking
+    XCS-Cross-Host-Build-Depends.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Thu, 12 Mar 2009 04:49:37 +0600
+
 dpkg (1.14.25.ip4) asimov; urgency=low
 
   * Disabled testsuite.
