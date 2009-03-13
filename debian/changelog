@@ -1,3 +1,10 @@
+dpkg (1.14.25.ip6) asimov; urgency=low
+
+  * Fixed dpkg dependency (coreutils is not available on target).
+  * s/InkPump/IPlinux/g
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Fri, 13 Mar 2009 23:51:43 +0600
+
 dpkg (1.14.25.ip5) asimov; urgency=low
 
   * Fixed typo which prevented dpkg-checkbuilddeps from checking
