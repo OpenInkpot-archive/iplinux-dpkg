@@ -17,7 +17,7 @@ Description: Debian package management system
  This package privides the low-level infrastructure for handling the
  installation and removal of Debian software packages.
  .
- This package is modified by Inkpump to support uclibc architectures and
+ This package is modified by IPlinux to support uclibc architectures and
  cross-compilation.
 
 Package: start-stop-daemon
@@ -27,5 +27,5 @@ Description: Utility to start and stop system daemon programs
  start-stop-daemon is used to control the creation and termination of
  system-level processes.
  .
- This tool is packaged separately from dpkg in Inkpump to avoid circular
+ This tool is packaged separately from dpkg in IPlinux to avoid circular
  dependencies.

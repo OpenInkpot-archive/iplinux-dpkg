@@ -4,7 +4,7 @@ Section: host/tools
 Priority: required
 Maintainer: Mikhail Gusarov <dottedmag@dottedmag.net>
 Homepage: http://wiki.debian.org/Teams/Dpkg
-Origin: Inkpump
+Origin: IPlinux
 Bugs: trac://iplinux.org/
 Standards-Version: 3.8.0
 Build-Depends: debhelper (>= 4.1.81), pkg-config, po4a (>= 0.33.1),
@@ -29,7 +29,7 @@ Description: Debian package management system
  .
  For Debian package development tools, install dpkg-dev.
  .
- This package is modified by Inkpump to support uclibc architectures and
+ This package is modified by IPlinux to support uclibc architectures and
  cross-compilation.
 
 Package: dpkg-dev
@@ -48,7 +48,7 @@ Description: Debian package development tools
  Most Debian source packages will require additional tools to build;
  for example, most packages need make and the C compiler gcc.
  .
- This package is modified by Inkpump to support uclibc architectures and
+ This package is modified by IPlinux to support uclibc architectures and
  cross-compilation.
 
 Package: dselect
@@ -63,5 +63,5 @@ Description: Debian package management front-end
  Many users find dselect intimidating and new users may prefer to use
  apt-based user interfaces.
  .
- This package is modified by Inkpump to support uclibc architectures and
+ This package is modified by IPlinux to support uclibc architectures and
  cross-compilation.
