@@ -11,7 +11,7 @@ Build-Depends: debhelper (>= 4.1.81), pkg-config, po4a (>= 0.33.1),
 
 Package: dpkg
 Architecture: any
-Pre-Depends: ${shlibs:Depends}, coreutils (>= 5.93-1)
+Pre-Depends: ${shlibs:Depends}
 Suggests: apt
 Description: Debian package management system
  This package privides the low-level infrastructure for handling the
@@ -22,7 +22,7 @@ Description: Debian package management system
 
 Package: start-stop-daemon
 Architecture: any
-Pre-Depends: ${shlibs:Depends}, coreutils (>= 5.93-1)
+Pre-Depends: ${shlibs:Depends}
 Description: Utility to start and stop system daemon programs
  start-stop-daemon is used to control the creation and termination of
  system-level processes.
