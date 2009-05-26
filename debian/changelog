@@ -1,3 +1,9 @@
+dpkg (1.14.25.ip7) asimov; urgency=low
+
+  * Rebuild to fix libgcc1 dependency.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Tue, 26 May 2009 23:24:18 +0700
+
 dpkg (1.14.25.ip6) asimov; urgency=low
 
   * Fixed dpkg dependency (coreutils is not available on target).
