@@ -2,6 +2,12 @@ dpkg (1.15.4+1.15.5-0.ip1) asimov; urgency=low
   
   [ Mikhail Gusarov ]
   * Merge IPlinux changes.
+  * dpkg-divert reimplemented in C
+  * Removed compatibility links in /usr/sbin
+  * Cleaned up {post,pre}{inst,rm}
+  * Cleaned up target dpkg
+  * Fixed stripping binaries
+  * Fixed dpkg-architecture behaviour without -a<arch>
 
   [ Guillem Jover ]
   * Remove obsolete conffiles on purge. Closes: #421367, #453005, #454628
