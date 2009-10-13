@@ -1,8 +1,6 @@
-Index: dpkg/scripts/dpkg-architecture.pl
-===================================================================
---- dpkg.orig/scripts/dpkg-architecture.pl	2009-01-17 04:12:06.000000000 +0600
-+++ dpkg/scripts/dpkg-architecture.pl	2009-01-17 04:12:08.000000000 +0600
-@@ -168,11 +168,6 @@
+--- a/scripts/dpkg-architecture.pl
++++ b/scripts/dpkg-architecture.pl
+@@ -170,11 +170,6 @@
  
  my $gcc = get_gcc_host_gnu_type();
  

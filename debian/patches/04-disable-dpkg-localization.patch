@@ -1,25 +1,21 @@
-Index: dpkg/debian/dpkg.install
-===================================================================
---- dpkg.orig/debian/dpkg.install	2008-12-28 02:42:50.000000000 +0600
-+++ dpkg/debian/dpkg.install	2008-12-28 02:43:02.000000000 +0600
-@@ -11,7 +11,6 @@
+--- a/debian/dpkg.install
++++ b/debian/dpkg.install
+@@ -14,7 +14,6 @@
  usr/lib/dpkg/mksplit
  usr/sbin
  usr/share/dpkg
 -usr/share/locale/*/LC_MESSAGES/dpkg.mo
- usr/share/man/*/*/cleanup-info.8
- usr/share/man/*/cleanup-info.8
- usr/share/man/*/*/dpkg-deb.1
-Index: dpkg/man/Makefile.am
-===================================================================
---- dpkg.orig/man/Makefile.am	2008-12-28 02:43:04.000000000 +0600
-+++ dpkg/man/Makefile.am	2008-12-28 02:43:12.000000000 +0600
-@@ -7,8 +7,6 @@
+ usr/share/man/{*/*,*}/dpkg-deb.1
+ usr/share/man/{*/*,*}/dpkg-divert.8
+ usr/share/man/{*/*,*}/dpkg-query.1
+--- a/man/Makefile.am
++++ b/man/Makefile.am
+@@ -19,8 +19,6 @@
  
  # FIXME: Use a stamp file until po4a supports them internally.
  man.stamp:
--	po4a --no-backups --variable srcdir=$(srcdir) \
--		$(srcdir)/po/po4a.cfg
- 	touch $@
+-	$(PO4A_V) cd $(srcdir) && \
+-	po4a $(PO4A_BUILD_OPTS) po/po4a.cfg
+ 	$(AM_V_at) touch $@
  
  clean-local: clean-local-@USE_NLS@

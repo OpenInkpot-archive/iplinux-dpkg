@@ -1,8 +1,6 @@
-Index: dpkg/src/processarc.c
-===================================================================
---- dpkg.orig/src/processarc.c	2009-01-25 23:37:19.000000000 +0600
-+++ dpkg/src/processarc.c	2009-01-25 23:38:05.000000000 +0600
-@@ -101,41 +101,6 @@
+--- a/src/processarc.c
++++ b/src/processarc.c
+@@ -107,41 +107,6 @@
  
    if (stat(filename,&stab)) ohshite(_("cannot access archive"));
  

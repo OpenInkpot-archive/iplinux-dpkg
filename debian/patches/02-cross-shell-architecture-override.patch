@@ -2,11 +2,9 @@ cross-shell uses black magic to run binaries from host architecture on rootfs
 prepared for target one. This patch removes the dpkg assumption that the build
 architecture is the runtime one.
 
-Index: dpkg/src/main.c
-===================================================================
---- dpkg.orig/src/main.c	2008-12-27 03:07:25.000000000 +0600
-+++ dpkg/src/main.c	2008-12-27 03:09:04.000000000 +0600
-@@ -142,7 +142,7 @@
+--- a/src/main.c
++++ b/src/main.c
+@@ -160,7 +160,7 @@
  }
  
  const char thisname[]= "dpkg";
@@ -15,26 +13,24 @@ Index: dpkg/src/main.c
  const char printforhelp[]= N_(
  "Type dpkg --help for help about installing and deinstalling packages [*];\n"
  "Use `dselect' or `aptitude' for user-friendly package management;\n"
-@@ -623,6 +623,9 @@
- int main(int argc, const char *const *argv) {
-   jmp_buf ejbuf;
+@@ -603,6 +603,9 @@
+   unsigned long infd;
+   int c, lno, i, skipchar;
    static void (*actionfunction)(const char *const *argv);
 +  char *cross_shell_arch = getenv("CROSS_SHELL_ARCH");
 +
 +  architecture = strdup(cross_shell_arch ? cross_shell_arch : ARCHITECTURE);
  
-   standard_startup(&ejbuf, argc, &argv, DPKG, 1, cmdinfos);
-   if (!cipaction) badusage(_("need an action option"));
-Index: dpkg/src/main.h
-===================================================================
---- dpkg.orig/src/main.h	2008-12-27 03:07:21.000000000 +0600
-+++ dpkg/src/main.h	2008-12-27 03:08:02.000000000 +0600
-@@ -107,7 +107,7 @@
+   pipein = *argv++;
+   if (pipein == NULL)
+--- a/src/main.h
++++ b/src/main.h
+@@ -128,7 +128,7 @@
  extern const char *admindir;
  extern const char *instdir;
- extern struct packageinlist *ignoredependss;
+ extern struct pkg_list *ignoredependss;
 -extern const char architecture[];
-+extern char *architecture;
++extern const char *architecture;
  
- /* from filesdb.c */
- 
+ struct invoke_hook {
+ 	struct invoke_hook *next;
