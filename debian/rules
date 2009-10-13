@@ -60,7 +60,7 @@ build-tree/config.status: configure
 	dh_testdir
 
 	install -d build-tree
-	cd build-tree && ../configure $(confflags) \
+	cd build-tree && env dpkg_cv_c99_snprintf=yes ../configure $(confflags) \
 		CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" \
 		--disable-silent-rules \
 		--prefix=/usr \
