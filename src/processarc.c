@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * processarc.c - the huge function process_archive
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <errno.h>
 #include <stdio.h>
@@ -35,10 +38,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <tarfn.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/buffer.h>
+#include <dpkg/subproc.h>
+#include <dpkg/tarfn.h>
+#include <dpkg/myopt.h>
 
 #include "filesdb.h"
 #include "main.h"
@@ -68,7 +73,8 @@ void process_archive(const char *filename) {
   struct pkginfo *pkg, *otherpkg, *divpkg;
   char *cidir, *cidirrest, *p;
   char *pfilenamebuf, conffilenamebuf[MAXCONFFILENAME];
-  const char *pfilename, *newinfofilename, *failed;
+  char *psize;
+  const char *pfilename, *newinfofilename;
   struct fileinlist *newconff, **newconffileslastp;
   struct fileinlist *cfile;
   struct reversefilelistiter rlistit;
@@ -82,7 +88,7 @@ void process_archive(const char *filename) {
   struct filenamenode *namenode;
   struct dirent *de;
   struct stat stab, oldfs;
-  struct packageinlist *deconpil, *deconpiltemp;
+  struct pkg_deconf_list *deconpil, *deconpiltemp;
   
   cleanup_pkg_failed= cleanup_conflictor_failed= 0;
   admindirlen= strlen(admindir);
@@ -151,7 +157,7 @@ void process_archive(const char *filename) {
 	if (! fc_badverify) {
 	  ohshit(_("Verification on package %s failed!"), filename);
 	} else {
-	  fprintf(stderr, _("Verification on package %s failed,\nbut installing anyway as you request.\n"), filename);
+	  fprintf(stderr, _("Verification on package %s failed,\nbut installing anyway as you requested.\n"), filename);
 	}
       } else {
 	printf(_("passed\n"));
@@ -177,13 +183,14 @@ void process_archive(const char *filename) {
   }
   cidirrest= cidir + strlen(cidir);
 
-  assert(*cidir && cidirrest[-1] == '/'); cidirrest[-1]= 0;
+  assert(*cidir && cidirrest[-1] == '/');
+  cidirrest[-1] = '\0';
   ensure_pathname_nonexisting(cidir); cidirrest[-1]= '/';
   
   push_cleanup(cu_cidir, ~0, NULL, 0, 2, (void *)cidir, (void *)cidirrest);
   c1= m_fork();
   if (!c1) {
-    cidirrest[-1]= 0;
+    cidirrest[-1] = '\0';
     execlp(BACKEND, BACKEND, "--control", filename, cidir, NULL);
     ohshite(_("failed to exec dpkg-deb to extract control information"));
   }
@@ -198,8 +205,9 @@ void process_archive(const char *filename) {
     pkg->files->name = pkg->files->msdosname = pkg->files->md5sum = NULL;
   }
   /* Always nfmalloc.  Otherwise, we may overwrite some other field(like md5sum). */
-  pkg->files->size= nfmalloc(30);
-  sprintf(pkg->files->size,"%lu",(unsigned long)stab.st_size);
+  psize = nfmalloc(30);
+  sprintf(psize, "%lu", (unsigned long)stab.st_size);
+  pkg->files->size = psize;
 
   if (cipaction->arg == act_avail) {
     printf(_("Recorded info about %s from %s.\n"),pkg->name,pfilename);
@@ -270,7 +278,7 @@ void process_archive(const char *filename) {
                 pfilename, pkg->name, depprobwhy.buf);
         if (!force_depends(dsearch->list))
           ohshit(_("pre-dependency problem - not installing %.250s"),pkg->name);
-        fprintf(stderr, _("dpkg: warning - ignoring pre-dependency problem !\n"));
+        warning(_("ignoring pre-dependency problem!"));
       }
     }
   }
@@ -324,7 +332,7 @@ void process_archive(const char *filename) {
                conffilenamebuf, MAXCONFFILENAME);
       while (p > conffilenamebuf && isspace(p[-1])) --p;
       if (p == conffilenamebuf) continue;
-      *p= 0;
+      *p = '\0';
       namenode= findnamenode(conffilenamebuf, 0);
       namenode->oldhash= NEWCONFFILEFLAG;
       newconff= newconff_append(&newconffileslastp, namenode);
@@ -398,7 +406,7 @@ void process_archive(const char *filename) {
       oldversionstatus == stat_triggersawaited ||
       oldversionstatus == stat_triggerspending ||
       oldversionstatus == stat_installed) {
-    pkg->eflag |= eflagf_reinstreq;
+    pkg->eflag |= eflag_reinstreq;
     pkg->status= stat_halfconfigured;
     modstatdb_note(pkg);
     push_cleanup(cu_prermupgrade, ~ehflag_normaltidy, NULL, 0, 1, (void *)pkg);
@@ -410,7 +418,7 @@ void process_archive(const char *filename) {
   }
 
   for (deconpil= deconfigure; deconpil; deconpil= deconpil->next) {
-    struct pkginfo *removing= deconpil->xinfo;
+    struct pkginfo *removing = deconpil->pkg_removal;
 
     if (removing)
       printf(_("De-configuring %s, to allow removal of %s ...\n"),
@@ -467,7 +475,7 @@ void process_archive(const char *filename) {
     modstatdb_note(conflictor[i]);
   }
 
-  pkg->eflag |= eflagf_reinstreq;
+  pkg->eflag |= eflag_reinstreq;
   if (pkg->status == stat_notinstalled)
     pkg->installed.version= pkg->available.version;
   pkg->status= stat_halfinstalled;
@@ -475,19 +483,19 @@ void process_archive(const char *filename) {
   if (oldversionstatus == stat_notinstalled) {
     push_cleanup(cu_preinstverynew, ~ehflag_normaltidy, NULL, 0,
                  3,(void*)pkg,(void*)cidir,(void*)cidirrest);
-    maintainer_script_new(pkg->name, PREINSTFILE, "pre-installation", cidir, cidirrest,
+    maintainer_script_new(pkg, PREINSTFILE, "pre-installation", cidir, cidirrest,
                           "install", NULL);
   } else if (oldversionstatus == stat_configfiles) {
     push_cleanup(cu_preinstnew, ~ehflag_normaltidy, NULL, 0,
                  3,(void*)pkg,(void*)cidir,(void*)cidirrest);
-    maintainer_script_new(pkg->name, PREINSTFILE, "pre-installation", cidir, cidirrest,
+    maintainer_script_new(pkg, PREINSTFILE, "pre-installation", cidir, cidirrest,
                           "install", versiondescribe(&pkg->installed.version,
                                                      vdew_nonambig),
                           NULL);
   } else {
     push_cleanup(cu_preinstupgrade, ~ehflag_normaltidy, NULL, 0,
                  4,(void*)pkg,(void*)cidir,(void*)cidirrest,(void*)&oldversionstatus);
-    maintainer_script_new(pkg->name, PREINSTFILE, "pre-installation", cidir, cidirrest,
+    maintainer_script_new(pkg, PREINSTFILE, "pre-installation", cidir, cidirrest,
                           "upgrade", versiondescribe(&pkg->installed.version,
                                                      vdew_nonambig),
                           NULL);
@@ -630,12 +638,17 @@ void process_archive(const char *filename) {
    */
   reversefilelist_init(&rlistit,pkg->clientdata->files);
   while ((namenode= reversefilelist_next(&rlistit))) {
+    struct filenamenode *usenode;
+
     if ((namenode->flags & fnnf_new_conff) ||
         (namenode->flags & fnnf_new_inarchive))
       continue;
 
+    usenode = namenodetouse(namenode, pkg);
+    trig_file_activate(usenode, pkg);
+
     fnamevb.used= fnameidlu;
-    varbufaddstr(&fnamevb, namenodetouse(namenode,pkg)->name);
+    varbufaddstr(&fnamevb, usenode->name);
     varbufaddc(&fnamevb,0);
 
     if (!stat(namenode->name,&stab) && S_ISDIR(stab.st_mode)) {
@@ -646,22 +659,17 @@ void process_archive(const char *filename) {
 
     if (lstat(fnamevb.buf, &oldfs)) {
       if (!(errno == ENOENT || errno == ELOOP || errno == ENOTDIR))
-	fprintf(stderr,
-		_("dpkg: warning - could not stat old file `%.250s'"
-		  " so not deleting it: %s"),
-		fnamevb.buf, strerror(errno));
+	warning(_("could not stat old file '%.250s' so not deleting it: %s"),
+	        fnamevb.buf, strerror(errno));
       continue;
     }
     if (S_ISDIR(oldfs.st_mode)) {
       if (rmdir(fnamevb.buf)) {
-	fprintf(stderr,
-		_("dpkg: warning - unable to delete old directory"
-		  " `%.250s': %s\n"), namenode->name, strerror(errno));
+	warning(_("unable to delete old directory '%.250s': %s"),
+	        namenode->name, strerror(errno));
       } else if ((namenode->flags & fnnf_old_conff)) {
-	fprintf(stderr,
-		_("dpkg: warning - old conffile `%.250s' was an empty"
-		  " directory (and has now been deleted)\n"),
-		namenode->name);
+	warning(_("old conffile '%.250s' was an empty directory "
+	          "(and has now been deleted)"), namenode->name);
       }
     } else {
       /* Ok, it's an old file, but is it really not in the new package?
@@ -678,6 +686,9 @@ void process_archive(const char *filename) {
        * since ones that stayed the same don't really apply here.
        */
       struct fileinlist *sameas = NULL;
+      static struct stat empty_stat;
+      struct varbuf cfilename = VARBUF_INIT;
+
       /* If we can't stat the old or new file, or it's a directory,
        * we leave it up to the normal code
        */
@@ -686,29 +697,40 @@ void process_archive(const char *filename) {
 
       for (cfile= newfileslist; cfile; cfile= cfile->next) {
 	if (!cfile->namenode->filestat) {
-	  cfile->namenode->filestat= nfmalloc(sizeof(struct stat));
-	  if (lstat(cfile->namenode->name, cfile->namenode->filestat)) {
+	  struct stat tmp_stat;
+
+	  varbufreset(&cfilename);
+	  varbufaddstr(&cfilename, instdir);
+	  varbufaddc(&cfilename, '/');
+	  varbufaddstr(&cfilename, cfile->namenode->name);
+	  varbufaddc(&cfilename, '\0');
+
+	  if (lstat(cfilename.buf, &tmp_stat) == 0) {
+	    cfile->namenode->filestat = nfmalloc(sizeof(struct stat));
+	    memcpy(cfile->namenode->filestat, &tmp_stat, sizeof(struct stat));
+	  } else {
 	    if (!(errno == ENOENT || errno == ELOOP || errno == ENOTDIR))
 	      ohshite(_("unable to stat other new file `%.250s'"),
 		      cfile->namenode->name);
-	    memset(cfile->namenode->filestat, 0,
-		   sizeof(*cfile->namenode->filestat));
+	    cfile->namenode->filestat = &empty_stat;
 	    continue;
 	  }
 	}
-	if (!cfile->namenode->filestat->st_mode) continue;
+	if (cfile->namenode->filestat == &empty_stat)
+	  continue;
 	if (oldfs.st_dev == cfile->namenode->filestat->st_dev &&
 	    oldfs.st_ino == cfile->namenode->filestat->st_ino) {
 	  if (sameas)
-	    fprintf(stderr, _("dpkg: warning - old file `%.250s' is the same"
-		    " as several new files!  (both `%.250s' and `%.250s')\n"),
-		    fnamevb.buf,
+	    warning(_("old file '%.250s' is the same as several new files! "
+	              "(both '%.250s' and '%.250s')"), fnamevb.buf,
 		    sameas->namenode->name, cfile->namenode->name);
 	  sameas= cfile;
 	  debug(dbg_eachfile, "process_archive: not removing %s,"
 		" since it matches %s", fnamevb.buf, cfile->namenode->name);
 	}
       }
+
+      varbuffree(&cfilename);
 
       if ((namenode->flags & fnnf_old_conff)) {
 	if (sameas) {
@@ -737,13 +759,9 @@ void process_archive(const char *filename) {
       if (sameas)
 	continue;
 
-      failed= N_("delete");
-      if (chmodsafe_unlink_statted(fnamevb.buf, &oldfs, &failed)) {
-	char mbuf[250];
-	snprintf(mbuf, sizeof(mbuf),
-		 N_("dpkg: warning - unable to %s old file `%%.250s': %%s\n"),
-		 failed);
-	fprintf(stderr, _(mbuf), namenode->name, strerror(errno));
+      if (secure_unlink_statted(fnamevb.buf, &oldfs)) {
+        warning(_("unable to securely remove old file '%.250s': %s"),
+                namenode->name, strerror(errno));
       }
 
     } /* !S_ISDIR */
@@ -773,7 +791,7 @@ void process_archive(const char *filename) {
   debug(dbg_general, "process_archive updating info directory");
   varbufreset(&infofnvb);
   varbufaddstr(&infofnvb,admindir);
-  varbufaddstr(&infofnvb,"/" INFODIR "/");
+  varbufaddstr(&infofnvb, "/" INFODIR);
   infodirlen= infofnvb.used;
   varbufaddc(&infofnvb,0);
   dsd= opendir(infofnvb.buf);
@@ -810,7 +828,7 @@ void process_archive(const char *filename) {
   }
   pop_cleanup(ehflag_normaltidy); /* closedir */
   
-  *cidirrest= 0; /* the directory itself */
+  *cidirrest = '\0'; /* the directory itself */
   dsd= opendir(cidir);
   if (!dsd) ohshite(_("unable to open temp control directory"));
   push_cleanup(cu_closedir, ~0, NULL, 0, 1, (void *)dsd);
@@ -834,8 +852,7 @@ void process_archive(const char *filename) {
       continue; /* ignore the control file */
     }
     if (!strcmp(de->d_name,LISTFILE)) {
-      fprintf(stderr, _("dpkg: warning - package %s"
-              " contained list as info file"), pkg->name);
+      warning(_("package %s contained list as info file"), pkg->name);
       continue;
     }
     /* Right, install it */
@@ -928,7 +945,7 @@ void process_archive(const char *filename) {
   }
 
   /* We can just copy the arbitrary fields list, because it is
-   * never even rearragned.  Phew !
+   * never even rearranged. Phew!
    */
   pkg->installed.arbs= pkg->available.arbs;
 
@@ -1047,18 +1064,12 @@ void process_archive(const char *filename) {
     pop_cleanup(ehflag_normaltidy); /* closedir */
     
     otherpkg->status= stat_notinstalled;
-    otherpkg->want= want_purge;
-    otherpkg->eflag= eflagv_ok;
+    otherpkg->want = want_unknown;
+    otherpkg->eflag = eflag_ok;
 
-    otherpkg->installed.depends = NULL;
-    otherpkg->installed.essential= 0;
-    otherpkg->installed.description = otherpkg->installed.maintainer = NULL;
-    otherpkg->installed.installedsize = otherpkg->installed.source = NULL;
-    otherpkg->installed.origin = otherpkg->installed.bugs = NULL;
-    otherpkg->installed.architecture = NULL;
-    otherpkg->installed.conffiles = NULL;
-    blankversion(&otherpkg->installed.version);
-    otherpkg->installed.arbs = NULL;
+    blankversion(&otherpkg->configversion);
+    blankpackageperfile(&otherpkg->installed);
+
     otherpkg->clientdata->fileslistvalid= 0;
 
     modstatdb_note(otherpkg);
@@ -1149,7 +1160,7 @@ void process_archive(const char *filename) {
   /* OK, we're now fully done with the main package.
    * This is quite a nice state, so we don't unwind past here.
    */
-  pkg->eflag= eflagv_ok;
+  pkg->eflag = eflag_ok;
   modstatdb_note(pkg);
   push_checkpoint(~ehflag_bombout, ehflag_normaltidy);
 

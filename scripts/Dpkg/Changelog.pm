@@ -2,6 +2,7 @@
 # Dpkg::Changelog
 #
 # Copyright © 2005, 2007 Frank Lichtenheld <frank@lichtenheld.de>
+# Copyright © 2009       Raphaël Hertzog <hertzog@debian.org>
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -24,7 +25,7 @@ Dpkg::Changelog
 
 =head1 DESCRIPTION
 
-to be written
+FIXME: to be written
 
 =head2 Functions
 
@@ -39,9 +40,10 @@ use English;
 
 use Dpkg;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(warning report syserr subprocerr error);
-use Dpkg::Cdata;
-use Dpkg::Fields;
+use Dpkg::ErrorHandling qw(:DEFAULT report);
+use Dpkg::Control;
+use Dpkg::Version;
+use Dpkg::Vendor qw(run_vendor_hook);
 
 use base qw(Exporter);
 
@@ -225,32 +227,104 @@ sub data {
 sub __sanity_check_range {
     my ( $data, $from, $to, $since, $until, $start, $end ) = @_;
 
-    if (($$start || $$end) && ($$from || $$since || $$to || $$until)) {
+    if (($$start || $$end) &&
+        (length($$from) || length($$since) || length($$to) || length($$until)))
+    {
 	warning(_g( "you can't combine 'count' or 'offset' with any other range option" ));
 	$$from = $$since = $$to = $$until = '';
     }
-    if ($$from && $$since) {
+    if (length($$from) && length($$since)) {
 	warning(_g( "you can only specify one of 'from' and 'since', using 'since'" ));
 	$$from = '';
     }
-    if ($$to && $$until) {
+    if (length($$to) && length($$until)) {
 	warning(_g( "you can only specify one of 'to' and 'until', using 'until'" ));
 	$$to = '';
-    }
-    if ($$since && ($data->[0]{Version} eq $$since)) {
-	warning(_g( "'since' option specifies most recent version, ignoring" ));
-	$$since = '';
-    }
-    if ($$until && ($data->[$#{$data}]{Version} eq $$until)) {
-	warning(_g( "'until' option specifies oldest version, ignoring" ));
-	$$until = '';
     }
     $$start = 0 if $$start < 0;
     return if $$start > $#$data;
     $$end = $#$data if $$end > $#$data;
     return if $$end < 0;
     $$end = $$start if $$end < $$start;
-    #TODO: compare versions
+
+    # Handle non-existing versions
+    my (%versions, @versions);
+    foreach my $entry (@{$data}) {
+        $versions{$entry->{Version}} = 1;
+        push @versions, $entry->{Version};
+    }
+    if ((length($$since) and not exists $versions{$$since})) {
+        warning(_g("'%s' option specifies non-existing version"), "since");
+        warning(_g("use newest entry that is smaller than the one specified"));
+        foreach my $v (@versions) {
+            if (version_compare_relation($v, REL_LT, $$since)) {
+                $$since = $v;
+                last;
+            }
+        }
+        if (not exists $versions{$$since}) {
+            # No version was smaller, include all
+            warning(_g("none found, starting from the oldest entry"));
+            $$since = '';
+            $$from = $versions[-1];
+        }
+    }
+    if ((length($$from) and not exists $versions{$$from})) {
+        warning(_g("'%s' option specifies non-existing version"), "from");
+        warning(_g("use oldest entry that is bigger than the one specified"));
+        my $oldest;
+        foreach my $v (@versions) {
+            if (version_compare_relation($v, REL_GT, $$from)) {
+                $oldest = $v;
+            }
+        }
+        if (defined($oldest)) {
+            $$from = $oldest;
+        } else {
+            warning(_g("no such entry found, ignoring '%s' parameter"), "from");
+            $$from = ''; # No version was bigger
+        }
+    }
+    if ((length($$until) and not exists $versions{$$until})) {
+        warning(_g("'%s' option specifies non-existing version"), "until");
+        warning(_g("use oldest entry that is bigger than the one specified"));
+        my $oldest;
+        foreach my $v (@versions) {
+            if (version_compare_relation($v, REL_GT, $$until)) {
+                $oldest = $v;
+            }
+        }
+        if (defined($oldest)) {
+            $$until = $oldest;
+        } else {
+            warning(_g("no such entry found, ignoring '%s' parameter"), "until");
+            $$until = ''; # No version was bigger
+        }
+    }
+    if ((length($$to) and not exists $versions{$$to})) {
+        warning(_g("'%s' option specifies non-existing version"), "to");
+        warning(_g("use newest entry that is smaller than the one specified"));
+        foreach my $v (@versions) {
+            if (version_compare_relation($v, REL_LT, $$to)) {
+                $$to = $v;
+                last;
+            }
+        }
+        if (not exists $versions{$$to}) {
+            # No version was smaller
+            warning(_g("no such entry found, ignoring '%s' parameter"), "to");
+            $$to = '';
+        }
+    }
+
+    if (length($$since) && ($data->[0]{Version} eq $$since)) {
+	warning(_g( "'since' option specifies most recent version, ignoring" ));
+	$$since = '';
+    }
+    if (length($$until) && ($data->[$#{$data}]{Version} eq $$until)) {
+	warning(_g( "'until' option specifies oldest version, ignoring" ));
+	$$until = '';
+    }
     return 1;
 }
 
@@ -261,12 +335,13 @@ sub _data_range {
 
     return [ @$data ] if $config->{all};
 
-    my $since = $config->{since} || '';
-    my $until = $config->{until} || '';
-    my $from = $config->{from} || '';
-    my $to = $config->{to} || '';
-    my $count = $config->{count} || 0;
-    my $offset = $config->{offset} || 0;
+    my ($since, $until, $from, $to, $count, $offset) = ('', '', '', '', 0, 0);
+    $since = $config->{since} if defined($config->{since});
+    $until = $config->{until} if defined($config->{until});
+    $from = $config->{from} if defined($config->{from});
+    $to = $config->{to} if defined($config->{to});
+    $count = $config->{count} if defined($config->{count});
+    $offset = $config->{offset} if defined($config->{offset});
 
     return if $offset and not $count;
     if ($offset > 0) {
@@ -285,7 +360,9 @@ sub _data_range {
 					\$start, \$end );
 
 
-    unless ($from or $to or $since or $until or $start or $end) {
+    unless (length($from) or length($to) or length($since) or length($until)
+            or $start or $end)
+    {
 	return [ @$data ] if $config->{default_all} and not $count;
 	return [ $data->[0] ];
     }
@@ -295,7 +372,7 @@ sub _data_range {
     my @result;
 
     my $include = 1;
-    $include = 0 if $to or $until;
+    $include = 0 if length($to) or length($until);
     foreach (@$data) {
 	my $v = $_->{Version};
 	$include = 1 if $v eq $to;
@@ -307,7 +384,8 @@ sub _data_range {
 	last if $v eq $from;
     }
 
-    return \@result;
+    return \@result if scalar(@result);
+    return undef;
 }
 
 sub _abort_early {
@@ -321,12 +399,13 @@ sub _abort_early {
 
     return if $config->{all};
 
-    my $since = $config->{since} || '';
-    my $until = $config->{until} || '';
-    my $from = $config->{from} || '';
-    my $to = $config->{to} || '';
-    my $count = $config->{count} || 0;
-    my $offset = $config->{offset} || 0;
+    my ($since, $until, $from, $to, $count, $offset) = ('', '', '', '', 0, 0);
+    $since = $config->{since} if defined($config->{since});
+    $until = $config->{until} if defined($config->{until});
+    $from = $config->{from} if defined($config->{from});
+    $to = $config->{to} if defined($config->{to});
+    $count = $config->{count} if defined($config->{count});
+    $offset = $config->{offset} if defined($config->{offset});
 
     return if $offset and not $count;
     return if $offset < 0 or $count < 0;
@@ -336,7 +415,9 @@ sub _abort_early {
     my $start = my $end = $offset;
     $end += $count-1 if $count > 0;
 
-    unless ($from or $to or $since or $until or $start or $end) {
+    unless (length($from) or length($to) or length($since) or length($until)
+            or $start or $end)
+    {
 	return if not $count;
 	return 1 if @$data;
     }
@@ -344,7 +425,7 @@ sub _abort_early {
     return 1 if ($start or $end)
 	and $start < @$data and $end < @$data;
 
-    return unless $since or $from;
+    return unless length($since) or length($from);
     foreach (@$data) {
 	my $v = $_->{Version};
 
@@ -413,15 +494,17 @@ See L<dpkg>.
 
 =cut
 
-our ( @CHANGELOG_FIELDS, %CHANGELOG_FIELDS );
+our ( @CHANGELOG_FIELDS, $CHANGELOG_FIELDS );
 our ( @URGENCIES, %URGENCIES );
 BEGIN {
     @CHANGELOG_FIELDS = qw(Source Version Distribution
                            Urgency Maintainer Date Closes Changes
                            Timestamp Header Items Trailer
+			   BlankAfterHeader BlankAfterChanges
+			   BlankAfterTrailer
                            Urgency_comment Urgency_lc);
-    tie %CHANGELOG_FIELDS, 'Dpkg::Fields::Object';
-    %CHANGELOG_FIELDS = map { $_ => 1 } @CHANGELOG_FIELDS;
+    $CHANGELOG_FIELDS = Dpkg::Control->new(type => CTRL_CHANGELOG);
+    %$CHANGELOG_FIELDS = map { $_ => 1 } @CHANGELOG_FIELDS;
     @URGENCIES = qw(low medium high critical emergency);
     my $i = 1;
     %URGENCIES = map { $_ => $i++ } @URGENCIES;
@@ -442,7 +525,7 @@ sub dpkg {
     }
     # handle unknown fields
     foreach my $field (keys %{$data->[0]}) {
-	next if $CHANGELOG_FIELDS{$field};
+	next if $CHANGELOG_FIELDS->{$field};
 	$f->{$field} = $data->[0]{$field};
     }
 
@@ -465,7 +548,7 @@ sub dpkg {
 
 	# handle unknown fields
 	foreach my $field (keys %$entry) {
-	    next if $CHANGELOG_FIELDS{$field};
+	    next if $CHANGELOG_FIELDS->{$field};
 	    next if exists $f->{$field};
 	    $f->{$field} = $entry->{$field};
 	}
@@ -473,6 +556,7 @@ sub dpkg {
 
     $f->{Closes} = join " ", sort { $a <=> $b } @{$f->{Closes}};
     $f->{Urgency} .= $urg_comment;
+    run_vendor_hook("post-process-changelog-entry", $f);
 
     return %$f if wantarray;
     return $f;
@@ -527,9 +611,11 @@ sub rfc822 {
 
 	# handle unknown fields
 	foreach my $field (keys %$entry) {
-	    next if $CHANGELOG_FIELDS{$field};
+	    next if $CHANGELOG_FIELDS->{$field};
 	    $f->{$field} = $entry->{$field};
 	}
+
+        run_vendor_hook("post-process-changelog-entry", $f);
 
 	push @out_data, $f;
     }
@@ -687,9 +773,18 @@ in the output format of C<dpkg-parsechangelog>.
 =cut
 
 sub get_dpkg_changes {
-    my $changes = "\n ".($_[0]->{Header}||'')."\n .\n".($_[0]->{Changes}||'');
+    my $entry = shift;
+    $entry->{Header} =~ s/\s+$// if defined $entry->{Header};
+    my $changes = "\n " . ($entry->{Header} || '') . "\n .\n";
+    foreach my $line (@{$entry->{Changes}}) {
+	$line =~ s/\s+$//;
+	if ($line eq "") {
+	    $changes .= " .\n";
+	} else {
+	    $changes .= " $line\n";
+	}
+    }
     chomp $changes;
-    $changes =~ s/^ $/ ./mgo;
     return $changes;
 }
 
@@ -698,7 +793,7 @@ sub get_dpkg_changes {
 =head3 my $fields = parse_changelog(%opt)
 
 This function will parse a changelog. In list context, it return as many
-Dpkg::Fields::Object as the parser did output. In scalar context, it will
+Dpkg::Control object as the parser did output. In scalar context, it will
 return only the first one. If the parser didn't return any data, it will
 return an empty in list context or undef on scalar context. If the parser
 failed, it will die.
@@ -722,6 +817,7 @@ as "--<key>". If the value of the corresponding hash entry is defined, then
 it's passed as the parameter that follows.
 
 =cut
+
 sub parse_changelog {
     my (%options) = @_;
     my @parserpath = ("/usr/local/lib/dpkg/parsechangelog",
@@ -801,9 +897,11 @@ sub parse_changelog {
 	exec(@exec) || syserr(_g("cannot exec format parser: %s"), $parser);
     }
 
-    # Get the output into several Dpkg::Fields::Object
+    # Get the output into several Dpkg::Control objects
     my (@res, $fields);
-    while ($fields = parsecdata(\*P, _g("output of changelog parser"))) {
+    while (1) {
+        $fields = Dpkg::Control->new(type => CTRL_CHANGELOG);
+        last unless $fields->parse_fh(\*P, _g("output of changelog parser"));
 	push @res, $fields;
     }
     close(P) or subprocerr(_g("changelog parser %s"), $parser);
@@ -821,18 +919,22 @@ Dpkg::Changelog::Entry - represents one entry in a Debian changelog
 
 =head1 SYNOPSIS
 
+FIXME: to be written
+
 =head1 DESCRIPTION
 
 =cut
 
 package Dpkg::Changelog::Entry;
 
+use Dpkg::Control;
+use base qw(Dpkg::Control);
+
 sub new {
     my ($classname) = @_;
 
-    tie my %entry, 'Dpkg::Fields::Object';
-    tied(%entry)->set_field_importance(@CHANGELOG_FIELDS);
-    my $entry = \%entry;
+    my $entry = Dpkg::Control->new(type => CTRL_CHANGELOG);
+    $entry->set_output_order(@CHANGELOG_FIELDS);
     bless $entry, $classname;
 }
 
@@ -846,11 +948,6 @@ sub is_empty {
 	     || $self->{Date});
 }
 
-sub output {
-    my $self = shift;
-    return tied(%$self)->output(@_);
-}
-
 1;
 __END__
 
@@ -861,6 +958,7 @@ Frank Lichtenheld, E<lt>frank@lichtenheld.deE<gt>
 =head1 COPYRIGHT AND LICENSE
 
 Copyright E<copy> 2005, 2007 by Frank Lichtenheld
+Copyright E<copy> 2009 by Raphael Hertzog
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

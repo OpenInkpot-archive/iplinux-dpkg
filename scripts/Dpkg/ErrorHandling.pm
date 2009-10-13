@@ -4,12 +4,24 @@ use Dpkg;
 use Dpkg::Gettext;
 
 use base qw(Exporter);
-our @EXPORT_OK = qw(warning warnerror error errormsg failure unknown
-                    syserr internerr subprocerr usageerr syntaxerr report
-                    info $warnable_error $quiet_warnings);
+our @EXPORT = qw(report_options info warning error errormsg
+                 syserr internerr subprocerr usageerr syntaxerr);
+our @EXPORT_OK = qw(report);
 
-our $warnable_error = 1;
-our $quiet_warnings = 0;
+my $quiet_warnings = 0;
+my $info_fh = \*STDOUT;
+
+sub report_options
+{
+    my (%options) = @_;
+
+    if (exists $options{quiet_warnings}) {
+        $quiet_warnings = $options{quiet_warnings};
+    }
+    if (exists $options{info_fh}) {
+        $info_fh = $options{info_fh};
+    }
+}
 
 sub report(@)
 {
@@ -21,7 +33,7 @@ sub report(@)
 
 sub info($;@)
 {
-    print report(_g("info"), @_) if (!$quiet_warnings);
+    print $info_fh report(_g("info"), @_) if (!$quiet_warnings);
 }
 
 sub warning($;@)
@@ -29,24 +41,10 @@ sub warning($;@)
     warn report(_g("warning"), @_) if (!$quiet_warnings);
 }
 
-sub warnerror(@)
-{
-    if ($warnable_error) {
-	warning(@_);
-    } else {
-	error(@_);
-    }
-}
-
-sub failure($;@)
-{
-    die report(_g("failure"), @_);
-}
-
 sub syserr($;@)
 {
     my $msg = shift;
-    die report(_g("failure"), "$msg: $!", @_);
+    die report(_g("error"), "$msg: $!", @_);
 }
 
 sub error($;@)
@@ -64,14 +62,6 @@ sub internerr($;@)
     die report(_g("internal error"), @_);
 }
 
-sub unknown($)
-{
-    # XXX: implicit argument
-    my $field = $_;
-    warning(_g("unknown information field '%s' in input data in %s"),
-            $field, $_[0]);
-}
-
 sub subprocerr(@)
 {
     my ($p) = (shift);
@@ -81,11 +71,11 @@ sub subprocerr(@)
     require POSIX;
 
     if (POSIX::WIFEXITED($?)) {
-	failure(_g("%s gave error exit status %s"), $p, POSIX::WEXITSTATUS($?));
+	error(_g("%s gave error exit status %s"), $p, POSIX::WEXITSTATUS($?));
     } elsif (POSIX::WIFSIGNALED($?)) {
-	failure(_g("%s died from signal %s"), $p, POSIX::WTERMSIG($?));
+	error(_g("%s died from signal %s"), $p, POSIX::WTERMSIG($?));
     } else {
-	failure(_g("%s failed with unknown exit code %d"), $p, $?);
+	error(_g("%s failed with unknown exit code %d"), $p, $?);
     }
 }
 

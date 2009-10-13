@@ -1,4 +1,4 @@
-# Copyright 2008 Raphaël Hertzog <hertzog@debian.org>
+# Copyright © 2008 Raphaël Hertzog <hertzog@debian.org>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@ use warnings;
 use Dpkg::Compression;
 use Dpkg::Gettext;
 use Dpkg::IPC;
-use Dpkg::ErrorHandling qw(error);
+use Dpkg::ErrorHandling;
 
 use POSIX;
 
@@ -96,8 +96,8 @@ sub _sanity_check {
         $to++ if $opts{"to_$_"};
         $from++ if $opts{"from_$_"};
     }
-    error("exactly one to_* parameter is needed") if $to != 1;
-    error("exactly one from_* parameter is needed") if $from != 1;
+    internerr("exactly one to_* parameter is needed") if $to != 1;
+    internerr("exactly one from_* parameter is needed") if $from != 1;
     return %opts;
 }
 
@@ -122,8 +122,9 @@ sub uncompress {
 }
 
 sub wait_end_process {
-    my ($self) = @_;
-    wait_child($self->{"pid"}, cmdline => $self->{"cmdline"}) if $self->{'pid'};
+    my ($self, %opts) = @_;
+    $opts{"cmdline"} ||= $self->{"cmdline"};
+    wait_child($self->{"pid"}, %opts) if $self->{'pid'};
     delete $self->{"pid"};
     delete $self->{"cmdline"};
 }

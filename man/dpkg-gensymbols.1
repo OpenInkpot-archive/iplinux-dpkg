@@ -1,5 +1,5 @@
 .\" Author: Raphael Hertzog
-.TH dpkg\-gensymbols 1 "2007-07-16" "Debian Project" "dpkg utilities"
+.TH dpkg\-gensymbols 1 "2009-06-19" "Debian Project" "dpkg utilities"
 .SH NAME
 dpkg\-gensymbols \- generate symbols files (shared library dependency information)
 .
@@ -56,22 +56,141 @@ with "~".
 Before applying any patch to the symbols file, the maintainer should
 double-check that it's sane. Public symbols are not supposed to disappear,
 so the patch should ideally only add new lines.
+.SS Using #PACKAGE# substitution
+.P
+In some rare cases, the name of the library varies between architectures.
+To avoid hardcoding the name of the package in the symbols file, you can
+use the marker \fI#PACKAGE#\fR. It will be replaced by the real package
+name during installation of the symbols files. Contrary to the
+\fI#MINVER#\fR marker, \fI#PACKAGE#\fR will never appear in a symbols file
+inside a binary package.
+.SS Using symbol tags
+.P
+Symbol tagging is useful for marking symbols that are special in some way.  Any
+symbol can have an arbitrary number of tags associated with it. While all tags are
+parsed and stored, only a some of them are understood by
+\fBdpkg\-gensymbols\fR and trigger special handling of the symbols. See
+subsection \fBStandard symbol tags\fR for reference of these tags.
+.P
+Tag specification comes right before the symbol name (no whitespace is allowed
+in between). It always starts with an opening bracket \fB(\fR, ends with a
+closing bracket \fB)\fR and must contain at least one tag. Multiple tags are
+separated by the \fB|\fR character. Each tag can optionally have a value which
+is separated form the tag name by the \fB=\fR character. Tag names and values
+can be arbitrary strings except they cannot contain any of the special \fB)\fR
+\fB|\fR \fB=\fR characters. Symbol names following a tag specification can
+optionally be quoted with either \fB'\fR or \fB"\fR characters to allow
+whitespaces in them. However, if there are no tags specified for the symbol,
+quotes are treated as part of the symbol name which continues up until the
+first space.
+.P
+ (tag1=i am marked|tag name with space)"tagged quoted symbol"@Base 1.0
+ (optional)tagged_unquoted_symbol@Base 1.0 1
+ untagged_symbol@Base 1.0
+.P
+The first symbol in the example is named \fItagged quoted symbol\fR and has two
+tags: \fItag1\fR with value \fIi am marked\fR and \fItag name with space\fR
+that has no value. The second symbol named \fItagged_unquoted_symbol\fR is
+only tagged with the tag named \fIoptional\fR. The last symbol is an
+example of the normal untagged symbol.
+.P
+Since symbol tags are an extension of the \fIdeb\-symbols(5)\fR format, they
+can only be part of the symbols files used in source packages (those files
+should then be seen as templates used to build the symbols files that are
+embedded in binary packages). When
+\fBdpkg\-gensymbols\fR is called without the \fI\-t\fR option, it will
+output symbols files compatible to the \fIdeb\-symbols(5)\fR format:
+it fully processes symbols according to the requirements of their standard tags
+and strips all tags from the output. On the contrary, in template mode
+(\fI\-t\fR) all symbols and their tags (both standard and unknown ones)
+are kept in the output and are written in their orignal form as they were
+loaded.
+.SS Standard symbol tags
+.TP
+.B optional
+A symbol marked as optional can disappear from the library at any time and that
+will never cause \fBdpkg\-gensymbols\fR to fail. However, disappeared optional
+symbols will continuously appear as MISSING in the diff in each new package
+revision.  This behaviour serves as a reminder for the maintainer that such a
+symbol needs to be removed from the symbol file or readded to the library. When
+the optional symbol, which was previously declared as MISSING, suddenly
+reappears in the next revision, it will be upgraded back to the "existing"
+status with its minimum version unchanged.
+
+This tag is useful for symbols which are private where their disappearance do
+not cause ABI breakage. For example, most of C++ template instantiations fall
+into this category. Like any other tag, this one may also have an arbitrary
+value: it could be used to indicate why the symbol is considered optional.
+.TP
+.B arch=\fIarchitecture list\fR
+This tag allows to restrict the set of architectures where the symbol
+is supposed to exist. When the symbols list is updated with the symbols
+discovered in the library, all arch-specific symbols which do not concern
+the current host architecture are treated as if they did not exist. If an
+arch-specific symbol matching the current host architecture does not exist
+in the library, normal procedures for missing symbols apply and it may
+cause \fBdpkg\-gensymbols\fR to fail. On the other hand, if the
+arch-specific symbol is found when it was not supposed to exist (because
+the current host architecture is not listed in the tag), it is made arch
+neutral (i.e. the arch tag is dropped and the symbol will appear in the
+diff due to this change), but it is not considered as new.
+
+When operating in the default non-template mode, among arch-specific symbols
+only those that match the current host architecture are written to the
+symbols file. On the contrary, all arch-specific symbols (including those
+from foreign arches) are always written to the symbol file when operating
+in template mode.
+
+The format of \fIarchitecture list\fR is the same as the one used in the
+\fIBuild-Depends\fR field of \fIdebian/control\fR (except the enclosing
+square brackets []). For example, the first symbol from the list below
+will be considered only on alpha, amd64, kfreebsd-amd64 and ia64 architectures
+while the second one anywhere except on armel.
+
+ (arch=alpha amd64 kfreebsd-amd64 ia64)a_64bit_specific_symbol@Base 1.0
+ (arch=!armel)symbol_armel_does_not_have@Base 1.0
+.TP
+.B ignore\-blacklist
+dpkg\-gensymbols has an internal blacklist of symbols that should not
+appear in symbols files as they are usually only side-effects of
+implementation details of the toolchain. If for some reason, you really
+want one of those symbols to be included in the symbols file, you should
+tag the symbol with \fBignore\-blacklist\fP. It can be necessary for
+some low level toolchain libraries like libgcc.
 .SS Using includes
 .P 
-When the set of exported symbols differ between architectures, it's no
-more possible to use a common symbols file. Using one file per
-architecture works, but it can also lead to duplication of information.
-In those cases, you can factorize the common part in some external file
+When the set of exported symbols differ between architectures, it may become
+inefficient to use a single symbol file. In those cases, an include directive
+may prove to be useful in a couple of ways:
+.IP \(bu
+You can factorize the common part in some external file
 and include that file in your \fIpackage\fR.symbols.\fIarch\fR file by
 using an include directive like this:
-.PP
+
 #include "\fIpackages\fR.symbols.common"
+.IP \(bu
+The include directive may also be tagged like any symbol:
+
+(tag|..|tagN)#include "file_to_include"
+
+As a result, all symbols included from \fIfile_to_include\fR will be considered
+to be tagged with \fItag\fR .. \fItagN\fR by default. You can use this feature
+to create a common \fIpackage\fR.symbols file which includes architecture
+specific symbol files:
+
+  common_symbol1@Base 1.0
+ (arch=amd64 ia64 alpha)#include "package.symbols.64bit"
+ (arch=!amd64 !ia64 !alpha)#include "package.symbols.32bit"
+  common_symbol2@Base 1.0
 .P
-The symbols files are read line by line, and include directives
-are processed as soon as they are encountered. This means that
-the content of the included file can override any content that appeared
-before the include directive and that any content after the
-directive can override anything contained in the included file.
+The symbols files are read line by line, and include directives are processed
+as soon as they are encountered. This means that the content of the included
+file can override any content that appeared before the include directive and
+that any content after the directive can override anything contained in the
+included file. Any symbol (or even another #include directive) in the included
+file can specify additional tags or override values of the inherited tags in
+its tag specification. However, there is no way for the symbol to remove
+any of the inherited tags.
 .P
 An included file can repeat the header line containing the SONAME of the
 library. In that case, it overrides any header line previously read.
@@ -114,7 +233,8 @@ changes;
 ideally, it uses symbol versioning to achieve ABI stability despite
 internal changes and API extension;
 .IP \(bu 4
-it doesn't export private symbols.
+it doesn't export private symbols (such symbols can be tagged optional as
+workaround).
 .P
 While maintaining the symbols file, it's easy to notice appearance and
 disappearance of symbols. But it's more difficult to catch incompatible
@@ -156,6 +276,15 @@ pre-existing, its content is used as basis for the generated symbols file.
 You can use this feature to update a symbols file so that it matches a
 newer upstream version of your library.
 .TP
+.BI \-t
+Write the symbol file in template mode rather than the format compatible with
+\fIdeb-symbols(5)\fR. The main difference is that in the template mode symbol
+names and tags are written in their original form contrary to the
+post-processed symbol names with tags stripped in the compatibility mode.
+Moreover, some symbols might be omitted when writing a standard
+\fIdeb-symbols(5)\fR file (according to the tag processing rules) while all
+symbols are always written to the symbol file template.
+.TP
 .BI \-c [0-4]
 Define the checks to do when comparing the generated symbols file
 with the file used as starting point. By default the level is 1.
@@ -190,7 +319,7 @@ Show the version and exit.
 .BR dpkg\-shlibdeps (1).
 .
 .SH AUTHORS
-Copyright (C) 2007 Rapha\[:e]l Hertzog
+Copyright \(co 2007-2009 Rapha\[:e]l Hertzog
 .sp
 This is free software; see the GNU General Public Licence version 2 or later
 for copying conditions. There is NO WARRANTY.

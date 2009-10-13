@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * cleanup.c - cleanup functions, used when we need to unwind
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <errno.h>
 #include <stdio.h>
@@ -26,17 +29,16 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <utime.h>
-#include <assert.h>
 #include <time.h>
 #include <ctype.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <tarfn.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/tarfn.h>
+#include <dpkg/myopt.h>
 
 #include "filesdb.h"
 #include "main.h"
@@ -111,7 +113,7 @@ void cu_prermupgrade(int argc, void **argv) {
                              versiondescribe(&pkg->available.version,
                                              vdew_nonambig),
                              NULL);
-  pkg->eflag &= ~eflagf_reinstreq;
+  pkg->eflag &= ~eflag_reinstreq;
   post_postinst_tasks(pkg, stat_installed);
   cleanup_pkg_failed--;
 }
@@ -160,7 +162,7 @@ void cu_prerminfavour(int argc, void **argv) {
                              versiondescribe(&infavour->available.version,
                                              vdew_nonambig),
                              NULL);
-  conflictor->eflag &= ~eflagf_reinstreq;
+  conflictor->eflag &= ~eflag_reinstreq;
   post_postinst_tasks(conflictor, stat_installed);
   cleanup_conflictor_failed--;
 }
@@ -171,10 +173,10 @@ void cu_preinstverynew(int argc, void **argv) {
   char *cidirrest= (char*)argv[2];
 
   if (cleanup_pkg_failed++) return;
-  maintainer_script_new(pkg->name, POSTRMFILE,"post-removal",cidir,cidirrest,
+  maintainer_script_new(pkg, POSTRMFILE, "post-removal", cidir, cidirrest,
                         "abort-install", NULL);
   pkg->status= stat_notinstalled;
-  pkg->eflag &= ~eflagf_reinstreq;
+  pkg->eflag &= ~eflag_reinstreq;
   blankpackageperfile(&pkg->installed);
   modstatdb_note(pkg);
   cleanup_pkg_failed--;
@@ -186,12 +188,12 @@ void cu_preinstnew(int argc, void **argv) {
   char *cidirrest= (char*)argv[2];
 
   if (cleanup_pkg_failed++) return;
-  maintainer_script_new(pkg->name, POSTRMFILE,"post-removal",cidir,cidirrest,
+  maintainer_script_new(pkg, POSTRMFILE, "post-removal", cidir, cidirrest,
                         "abort-install", versiondescribe(&pkg->installed.version,
                                                          vdew_nonambig),
                         NULL);
   pkg->status= stat_configfiles;
-  pkg->eflag &= ~eflagf_reinstreq;
+  pkg->eflag &= ~eflag_reinstreq;
   modstatdb_note(pkg);
   cleanup_pkg_failed--;
 }
@@ -203,13 +205,13 @@ void cu_preinstupgrade(int argc, void **argv) {
   enum pkgstatus *oldstatusp= (enum pkgstatus*)argv[3];
 
   if (cleanup_pkg_failed++) return;
-  maintainer_script_new(pkg->name, POSTRMFILE,"post-removal",cidir,cidirrest,
+  maintainer_script_new(pkg, POSTRMFILE, "post-removal", cidir, cidirrest,
                         "abort-upgrade",
                         versiondescribe(&pkg->installed.version,
                                         vdew_nonambig),
                         NULL);
   pkg->status= *oldstatusp;
-  pkg->eflag &= ~eflagf_reinstreq;
+  pkg->eflag &= ~eflag_reinstreq;
   modstatdb_note(pkg);
   cleanup_pkg_failed--;
 }
@@ -231,7 +233,7 @@ void cu_prermremove(int argc, void **argv) {
 
   if (cleanup_pkg_failed++) return;
   maintainer_script_postinst(pkg, "abort-remove", NULL);
-  pkg->eflag &= ~eflagf_reinstreq;
+  pkg->eflag &= ~eflag_reinstreq;
   post_postinst_tasks(pkg, *oldpkgstatus);
   cleanup_pkg_failed--;
 }

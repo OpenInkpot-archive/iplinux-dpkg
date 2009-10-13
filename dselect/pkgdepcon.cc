@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * pkgdepcon.cc - dependency and conflict resolution
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -18,18 +18,17 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "pkglist.h"
 
@@ -176,15 +175,18 @@ int packagelist::deselect_one_of(pkginfo *per, pkginfo *ped, dependency *display
   
   perpackagestate *best;
 
-  if (per->eflag & pkginfo::eflagf_reinstreq) best= ed;      // Try not keep packages
-  else if (ped->eflag & pkginfo::eflagf_reinstreq) best= er; //  needing reinstallation
+  // Try not keep packages needing reinstallation.
+  if (per->eflag & pkginfo::eflag_reinstreq)
+    best = ed;
+  else if (ped->eflag & pkginfo::eflag_reinstreq)
+    best = er;
   else if (er->spriority < ed->spriority) best= er; // We'd rather change the
   else if (er->spriority > ed->spriority) best= ed; // one with the lowest priority.
-  else if (er->pkg->priority >
-           er->pkg->priority) best= er;         // ... failing that the one with
-  else if (er->pkg->priority <                  //  the highest priority
-           er->pkg->priority) best= ed;
-  
+  // ... failing that the one with the highest priority
+  else if (er->pkg->priority > ed->pkg->priority)
+    best = er;
+  else if (er->pkg->priority < ed->pkg->priority)
+    best = ed;
   else best= ed;                                      // ... failing that, the second
 
   if (depdebug && debug)
@@ -194,7 +196,7 @@ int packagelist::deselect_one_of(pkginfo *per, pkginfo *ped, dependency *display
   if (best->spriority >= sp_deselecting) return 0;
   best->suggested=
     best->pkg->status == pkginfo::stat_notinstalled
-      ? pkginfo::want_purge : pkginfo::want_deinstall; /* fixme: configurable */
+      ? pkginfo::want_purge : pkginfo::want_deinstall; // FIXME: configurable.
   best->selected= best->suggested;
   best->spriority= sp_deselecting;
 
@@ -208,13 +210,13 @@ int packagelist::resolvedepcon(dependency *depends) {
 
   if (depdebug && debug) {
     fprintf(debug,"packagelist[%p]::resolvedepcon([%p] %s --%s-->",
-          this,depends,depends->up->name,gettext(relatestrings[depends->type]));
+            this, depends, depends->up->name, relatestrings[depends->type]);
     for (possi=depends->list; possi; possi=possi->next)
       fprintf(debug," %s",possi->ed->name);
     fprintf(debug,"); (ing)->want=%s\n",
             depends->up->clientdata
-            ? gettext(wantstrings[depends->up->clientdata->suggested])
-            : _("(no clientdata)"));
+            ? wantstrings[depends->up->clientdata->suggested]
+            : "(no clientdata)");
   }
   
   if (!depends->up->clientdata) return 0;
@@ -235,13 +237,13 @@ int packagelist::resolvedepcon(dependency *depends) {
 
     fixbyupgrade= 0;
     
-    for (possi= depends->list;
-         possi && !deppossatisfied(possi,&fixbyupgrade);
-         possi= possi->next);
+    possi = depends->list;
+    while (possi && !deppossatisfied(possi, &fixbyupgrade))
+      possi = possi->next;
     if (depdebug && debug)
       fprintf(debug,"packagelist[%p]::resolvedepcon([%p]): depends found %s\n",
               this,depends,
-              possi ? possi->ed->name : _("[none]"));
+              possi ? possi->ed->name : "[none]");
     if (possi) return 0;
 
     // Ensures all in the recursive list; adds info strings; ups priorities
@@ -307,7 +309,7 @@ int packagelist::resolvedepcon(dependency *depends) {
     if (depends->type != dep_recommends) {
       best->selected= best->suggested=
         best->pkg->status == pkginfo::stat_notinstalled
-          ? pkginfo::want_purge : pkginfo::want_deinstall; /* fixme: configurable */
+          ? pkginfo::want_purge : pkginfo::want_deinstall; // FIXME: configurable
       best->spriority= sp_deselecting;
     }
     return r ? 2 : 0;

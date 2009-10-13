@@ -2,8 +2,8 @@
  * dselect - Debian package maintenance user interface
  * method.cc - access method handling
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2001,2002 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2001,2002 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,9 +19,11 @@
  * License along with dpkg; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -40,10 +42,10 @@ extern "C" {
 #include <fcntl.h>
 #include <sys/file.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/subproc.h>
+
 #include "dselect.h"
 #include "method.h"
 
@@ -56,7 +58,9 @@ static const char *const methoddirectories[]= {
 static char *methodlockfile= 0;
 static int methlockfd= -1;
 
-void sthfailed(const char * reasoning) {
+static void
+sthfailed(const char * reasoning)
+{
   char buf[2048];
 
   curseson();
@@ -133,38 +137,17 @@ static enum urqresult lockmethod(void) {
   return urqr_normal;
 }
 
-static int catchsignals[]= { SIGQUIT, SIGINT, 0 };
-#define NCATCHSIGNALS ((signed)(sizeof(catchsignals)/sizeof(int))-1)
-static struct sigaction uncatchsignal[NCATCHSIGNALS];
-
-void cu_restoresignals(int, void**) {
-  int i;
-  for (i=0; i<NCATCHSIGNALS; i++)
-    if (sigaction(catchsignals[i],&uncatchsignal[i],0))
-      fprintf(stderr,_("error un-catching signal %d: %s\n"),
-              catchsignals[i],strerror(errno));
-}
-
 urqresult falliblesubprocess(const char *exepath, const char *name,
                              const char *const *args) {
   pid_t c1, cr;
   int status, i, c;
-  struct sigaction catchsig;
   
   cursesoff();
 
-  memset(&catchsig,0,sizeof(catchsig));
-  catchsig.sa_handler= SIG_IGN;
-  sigemptyset(&catchsig.sa_mask);
-  catchsig.sa_flags= 0;
-  for (i=0; i<NCATCHSIGNALS; i++)
-    if (sigaction(catchsignals[i],&catchsig,&uncatchsignal[i]))
-      ohshite(_("unable to ignore signal %d before running %.250s"),
-              catchsignals[i], name);
-  push_cleanup(cu_restoresignals,~0, 0,0, 0);
+  setup_subproc_signals(name);
 
   if (!(c1= m_fork())) {
-    cu_restoresignals(0,0);
+    cu_subproc_signals(0, 0);
     execvp(exepath,(char* const*) args);
     ohshite(_("unable to run %.250s process `%.250s'"),name,exepath);
   }
@@ -197,8 +180,7 @@ urqresult falliblesubprocess(const char *exepath, const char *name,
     fprintf(stderr,_("failed with an unknown wait return code %d.\n"),status);
   }
   fprintf(stderr,_("Press <enter> to continue.\n"));
-  if (ferror(stderr))
-    ohshite(_("write error on standard error"));
+  m_output(stderr, _("<standard error>"));
   do { c= fgetc(stdin); } while ((c == ERR && errno==EINTR) || ((c != '\n') && c != EOF));
   if ((c == ERR) || (c == EOF))
     ohshite(_("error reading acknowledgement of program failure message"));

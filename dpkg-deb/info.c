@@ -2,8 +2,8 @@
  * dpkg-deb - construction and deconstruction of *.deb archives
  * info.c - providing information
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2001 Wichert Akkerman
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2001 Wichert Akkerman
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -20,6 +20,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -34,9 +37,12 @@
 #include <limits.h>
 #include <ctype.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/buffer.h>
+#include <dpkg/subproc.h>
+#include <dpkg/myopt.h>
+
 #include "dpkg-deb.h"
 
 static void cu_info_prepare(int argc, void **argv) {
@@ -87,35 +93,32 @@ static int ilist_select(const struct dirent *de) {
 static void info_spew(const char *debar, const char *directory,
                       const char *const *argv) {
   const char *component;
-  size_t pathlen;
-  char *controlfile = NULL;
+  struct varbuf controlfile = VARBUF_INIT;
   FILE *co;
   int re= 0;
 
   while ((component = *argv++) != NULL) {
-    pathlen = strlen(directory) + strlen(component) + 2;
-    controlfile = (void *) realloc((void *) controlfile, pathlen);
-    if (!controlfile)
-      ohshite(_("realloc failed (%zu bytes)"), pathlen);
-    memset(controlfile, 0, sizeof(controlfile));
+    varbufreset(&controlfile);
+    varbufaddstr(&controlfile, directory);
+    varbufaddc(&controlfile, '/');
+    varbufaddstr(&controlfile, component);
+    varbufaddc(&controlfile, '\0');
 
-    strcat(controlfile, directory);
-    strcat(controlfile, "/");
-    strcat(controlfile, component);
-    co= fopen(controlfile,"r");
-
+    co = fopen(controlfile.buf, "r");
     if (co) {
       stream_fd_copy(co, 1, -1, _("info_spew"));
     } else if (errno == ENOENT) {
-      if (fprintf(stderr, _("dpkg-deb: `%.255s' contains no control component `%.255s'\n"),
-		  debar, component) == EOF) werr("stderr");
+      fprintf(stderr,
+              _("dpkg-deb: `%.255s' contains no control component `%.255s'\n"),
+              debar, component);
       re++;
     } else {
       ohshite(_("open component `%.255s' (in %.255s) failed in an unexpected way"),
 	      component, directory);
     }
   }
-  free(controlfile);
+  varbuffree(&controlfile);
+
   if (re==1)
     ohshit(_("One requested control component is missing"));
   else if (re>1)
@@ -141,7 +144,8 @@ static void info_list(const char *debar, const char *directory) {
     if (S_ISREG(stab.st_mode)) {
       if (!(cc= fopen(cdep->d_name,"r")))
         ohshite(_("cannot open `%.255s' (in `%.255s')"),cdep->d_name,directory);
-      lines= 0; interpreter[0]= 0;
+      lines = 0;
+      interpreter[0] = '\0';
       if ((c= getc(cc))== '#') {
         if ((c= getc(cc))== '!') {
           while ((c= getc(cc))== ' ');
@@ -149,7 +153,7 @@ static void info_list(const char *debar, const char *directory) {
           while (il<INTERPRETER_MAX && !isspace(c) && c!=EOF) {
             *p++= c; il++; c= getc(cc);
           }
-          *p++= 0;
+          *p++ = '\0';
           if (c=='\n') lines++;
         }
       }
@@ -157,28 +161,29 @@ static void info_list(const char *debar, const char *directory) {
       if (ferror(cc)) ohshite(_("failed to read `%.255s' (in `%.255s')"),
                               cdep->d_name,directory);
       fclose(cc);
-      if (printf(_(" %7ld bytes, %5d lines   %c  %-20.127s %.127s\n"),
-                 (long)stab.st_size, lines,
-                 S_IXUSR & stab.st_mode ? '*' : ' ',
-                 cdep->d_name, interpreter) == EOF)
-        werr("stdout");
+      printf(_(" %7ld bytes, %5d lines   %c  %-20.127s %.127s\n"),
+             (long)stab.st_size, lines, S_IXUSR & stab.st_mode ? '*' : ' ',
+             cdep->d_name, interpreter);
     } else {
-      if (printf(_("     not a plain file          %.255s\n"),cdep->d_name) == EOF)
-        werr("stdout");
+      printf(_("     not a plain file          %.255s\n"), cdep->d_name);
     }
   }
   if (!(cc= fopen("control","r"))) {
     if (errno != ENOENT) ohshite(_("failed to read `control' (in `%.255s')"),directory);
-    if (fputs(_("(no `control' file in control archive!)\n"),stdout) < 0) werr("stdout");
+    fputs(_("(no `control' file in control archive!)\n"), stdout);
   } else {
     lines= 1;
     while ((c= getc(cc))!= EOF) {
-      if (lines) if (putc(' ',stdout) == EOF) werr("stdout");
-      if (putc(c,stdout) == EOF) werr("stdout");
+      if (lines)
+        putc(' ', stdout);
+      putc(c, stdout);
       lines= c=='\n';
     }
-    if (!lines) if (putc('\n',stdout) == EOF) werr("stdout");
+    if (!lines)
+      putc('\n', stdout);
   }
+
+  m_output(stdout, _("<standard output>"));
 }
 
 static void info_field(const char *debar, const char *directory,
@@ -199,7 +204,7 @@ static void info_field(const char *debar, const char *directory,
       for (pf=fieldname, fnl=0;
            fnl <= MAXFIELDNAME && c!=EOF && !isspace(c) && c!=':';
            c= getc(cc)) { *pf++= c; fnl++; }
-      *pf++= 0;
+      *pf++ = '\0';
       doing= fnl >= MAXFIELDNAME || c=='\n' || c==EOF;
       for (fp=fields; !doing && *fp; fp++)
         if (!strcasecmp(*fp,fieldname)) doing=1;
@@ -221,7 +226,7 @@ static void info_field(const char *debar, const char *directory,
   }
   if (ferror(cc)) ohshite(_("failed during read of `control' component"));
   if (doing) putc('\n',stdout);
-  if (ferror(stdout)) werr("stdout");
+  m_output(stdout, _("<standard output>"));
 }
 
 void do_showinfo(const char* const* argv) {

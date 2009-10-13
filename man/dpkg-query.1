@@ -1,4 +1,4 @@
-.TH dpkg\-query 1 "2007-07-18" "Debian Project" "dpkg suite"
+.TH dpkg\-query 1 "2009-09-06" "Debian Project" "dpkg suite"
 .SH NAME
 dpkg\-query \- a tool to query the dpkg database
 .
@@ -15,7 +15,8 @@ the \fBdpkg\fP database.
 .BR \-l ", " \-\-list " \fIpackage-name-pattern\fP..."
 List packages matching given pattern. If no \fIpackage-name-pattern\fP
 is given, list all packages in \fI/var/lib/dpkg/status\fP, excluding
-the ones marked with state purge. Normal shell wildchars are allowed
+the ones marked as not-installed (i.e. those which have been previously
+purged). Normal shell wildchars are allowed
 in \fIpackage-name-pattern\fP. Please note you will probably have to
 quote \fIpackage-name-pattern\fP to prevent the shell from performing
 filename expansion. For example this will list all package names starting
@@ -46,6 +47,14 @@ List files installed to your system from \fIpackage-name\fP.
 However, note that files created by package-specific
 installation-scripts are not listed.
 .TP
+.BR \-c ", " \-\-control\-path " \fIpackage-name\fP [\fIcontrol-file\fP]"
+List paths for control files installed to your system from \fIpackage-name\fP.
+If \fIcontrol-file\fP is specified then only list the path for that control
+file if it is present. \fBWarning\fP: this command is semi-public, it should
+be used only as a last resort solution, and if no other interface is
+available. It might get deprecated later on if better interfaces or the
+current architectural deficiencies have been solved.
+.TP
 .BR \-S ", " \-\-search " \fIfilename-search-pattern\fP..."
 Search for a filename from installed packages. All standard shell
 wildchars can be used in the pattern. This command will not list
@@ -54,7 +63,10 @@ alternatives.
 .TP
 .BR \-p ", " \-\-print\-avail " \fIpackage-name\fP..."
 Display details about \fIpackage-name\fP, as found in
-\fI/var/lib/dpkg/available\fP.
+\fI/var/lib/dpkg/available\fP. Users of APT-based frontends
+should use \fBapt\-cache show\fP \fIpackage-name\fP instead
+as the \fIavailable\fP file is only kept up-to-date when
+using \fBdselect\fP.
 .TP
 .BR \-h ", " \-\-help
 Show the usage message and exit.
@@ -92,24 +104,26 @@ Package information can be included by inserting
 variable references to package fields using the syntax
 \(lq\fB${\fP\fIfield\fR[\fB;\fP\fIwidth\fR]\fB}\fP\(rq. Fields are
 printed right-aligned unless the width is negative in which case left
-alignment will be used. The following \fIfield\fRs are recognised:
+alignment will be used. The following \fIfield\fRs are recognised but
+they are not necessarily available in the status file (only internal
+fields or fields stored in the binary package end up in it):
 
 .nf
     \fBArchitecture\fP
     \fBBugs\fP
-    \fBConffiles\fP
-    \fBConfig\-Version\fP
+    \fBConffiles\fP (internal)
+    \fBConfig\-Version\fP (internal)
     \fBConflicts\fP
     \fBBreaks\fP
     \fBDepends\fP
     \fBDescription\fP
     \fBEnhances\fP
     \fBEssential\fP
-    \fBFilename\fP
+    \fBFilename\fP (internal, dselect related)
     \fBHomepage\fP
     \fBInstalled\-Size\fP
-    \fBMD5sum\fP
-    \fBMSDOS\-Filename\fP
+    \fBMD5sum\fP (internal, dselect related)
+    \fBMSDOS\-Filename\fP (internal, dselect related)
     \fBMaintainer\fP
     \fBOrigin\fP
     \fBPackage\fP
@@ -118,13 +132,15 @@ alignment will be used. The following \fIfield\fRs are recognised:
     \fBProvides\fP
     \fBRecommends\fP
     \fBReplaces\fP
-    \fBRevision\fP
+    \fBRevision\fP (obsolete)
     \fBSection\fP
-    \fBSize\fP
+    \fBSize\fP (internal, dselect related)
     \fBSource\fP
-    \fBStatus\fP
+    \fBStatus\fP (internal)
     \fBSuggests\fP
-    \fBTag\fP
+    \fBTag\fP (usually not in the .deb but in APT's Packages files)
+    \fBTriggers-Awaited\fP (internal)
+    \fBTriggers-Pending\fP (internal)
     \fBVersion\fP
 .fi
 
@@ -146,7 +162,7 @@ This setting influences the output of the \fB\-\-list\fP option by changing
 the width of its output.
 .
 .SH AUTHOR
-Copyright (C) 2001 Wichert Akkerman
+Copyright \(co 2001 Wichert Akkerman
 .sp
 This is free software; see the GNU General Public Licence version 2 or
 later for copying conditions. There is NO WARRANTY.

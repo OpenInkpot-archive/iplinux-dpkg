@@ -20,7 +20,7 @@ use warnings;
 package Dpkg::Shlibs::Objdump;
 
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(syserr subprocerr warning);
+use Dpkg::ErrorHandling;
 
 sub new {
     my $this = shift;
@@ -30,10 +30,8 @@ sub new {
     return $self;
 }
 
-sub parse {
-    my ($self, $file) = @_;
-    my $obj = Dpkg::Shlibs::Objdump::Object->new($file);
-
+sub add_object {
+    my ($self, $obj) = @_;
     my $id = $obj->get_id;
     if ($id) {
 	$self->{objects}{$id} = $obj;
@@ -41,6 +39,12 @@ sub parse {
     return $id;
 }
 
+sub parse {
+    my ($self, $file) = @_;
+    my $obj = Dpkg::Shlibs::Objdump::Object->new($file);
+
+    return $self->add_object($obj);
+}
 
 sub locate_symbol {
     my ($self, $name) = @_;
@@ -55,10 +59,15 @@ sub locate_symbol {
 
 sub get_object {
     my ($self, $objid) = @_;
-    if (exists $self->{objects}{$objid}) {
+    if ($self->has_object($objid)) {
 	return $self->{objects}{$objid};
     }
     return undef;
+}
+
+sub has_object {
+    my ($self, $objid) = @_;
+    return exists $self->{objects}{$objid};
 }
 
 {
@@ -71,7 +80,7 @@ sub get_object {
 	} else {
 	    local $ENV{LC_ALL} = "C";
 	    open(P, "-|", "objdump", "-a", "--", $file)
-		|| syserr(_g("cannot fork for objdump"));
+		|| syserr(_g("cannot fork for %s"), "objdump");
 	    while (<P>) {
 		chomp;
 		if (/^\s*\S+:\s*file\s+format\s+(\S+)\s*$/) {
@@ -98,7 +107,7 @@ sub is_elf {
 package Dpkg::Shlibs::Objdump::Object;
 
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(syserr warning);
+use Dpkg::ErrorHandling;
 
 sub new {
     my $this = shift;
@@ -145,7 +154,7 @@ sub _read {
 
     local $ENV{LC_ALL} = 'C';
     open(my $objdump, "-|", "objdump", "-w", "-f", "-p", "-T", "-R", $file)
-	|| syserr(_g("cannot fork %s"), "objdump");
+	|| syserr(_g("cannot fork for %s"), "objdump");
     my $ret = $self->_parse($objdump);
     close($objdump);
     return $ret;
@@ -197,8 +206,15 @@ sub _parse {
 		$self->{HASH} = $1;
 	    } elsif (/^\s*GNU_HASH\s+(\S+)/) {
 		$self->{GNU_HASH} = $1;
+	    } elsif (/^\s*RUNPATH\s+(\S+)/) {
+                # RUNPATH takes precedence over RPATH but is
+                # considered after LD_LIBRARY_PATH while RPATH
+                # is considered before (if RUNPATH is not set).
+                $self->{RPATH} = [ split (/:/, $1) ];
 	    } elsif (/^\s*RPATH\s+(\S+)/) {
-		push @{$self->{RPATH}}, split (/:/, $1);
+                unless (scalar(@{$self->{RPATH}})) {
+                    $self->{RPATH} = [ split (/:/, $1) ];
+                }
 	    }
 	} elsif ($section eq "none") {
 	    if (/^\s*\S+:\s*file\s+format\s+(\S+)\s*$/) {
@@ -320,7 +336,7 @@ sub add_dynamic_symbol {
     if ($symbol->{version}) {
 	$self->{dynsyms}{$symbol->{name} . '@' . $symbol->{version}} = $symbol;
     } else {
-	$self->{dynsyms}{$symbol->{name}} = $symbol;
+	$self->{dynsyms}{$symbol->{name} . '@Base'} = $symbol;
     }
 }
 
@@ -333,6 +349,11 @@ sub get_symbol {
     my ($self, $name) = @_;
     if (exists $self->{dynsyms}{$name}) {
 	return $self->{dynsyms}{$name};
+    }
+    if ($name !~ /@/) {
+        if (exists $self->{dynsyms}{$name . '@Base'}) {
+            return $self->{dynsyms}{$name . '@Base'};
+        }
     }
     return undef;
 }

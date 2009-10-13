@@ -2,11 +2,9 @@
  * dpkg-query - program for query the dpkg database
  * query.c - status enquiry and listing options
  *
- * dpkg - main program for package management
- * enquiry.c - status enquiry and listing options
- *
- * Copyright (C) 1995,1996 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 200,2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1995,1996 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2000,2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 2006-2009 Guillem Jover <guillem@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -23,47 +21,37 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <fnmatch.h>
-#include <assert.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/termios.h>
 #include <fcntl.h>
+#include <dirent.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#if HAVE_LOCALE_H
+#include <locale.h>
+#endif
+
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/pkg-array.h>
+#include <dpkg/path.h>
+#include <dpkg/myopt.h>
 
 #include "filesdb.h"
 #include "main.h"
 
+static int failures = 0;
 static const char* showformat		= "${Package}\t${Version}\n";
-
-
-int pkglistqsortcmp(const void *a, const void *b) {
-  const struct pkginfo *pa= *(const struct pkginfo**)a;
-  const struct pkginfo *pb= *(const struct pkginfo**)b;
-  return strcmp(pa->name,pb->name);
-}
-
-static void limiteddescription(struct pkginfo *pkg, int maxl,
-                               const char **pdesc_r, int *l_r) {
-  const char *pdesc, *p;
-  int l;
-  
-  pdesc= pkg->installed.valid ? pkg->installed.description : 0;
-  if (!pdesc) pdesc= _("(no description available)");
-  p= strchr(pdesc,'\n');
-  if (!p) p= pdesc+strlen(pdesc);
-  l= (p - pdesc > maxl) ? maxl : (int)(p - pdesc);
-  *pdesc_r=pdesc; *l_r=l;
-}
 
 static int getwidth(void) {
   int fd;
@@ -85,26 +73,28 @@ static int getwidth(void) {
   }
 }
 
-static void list1package(struct pkginfo *pkg, int *head,
-			 struct pkginfo **pkgl, int np) {
+static void
+list1package(struct pkginfo *pkg, int *head, struct pkg_array *array)
+{
   int i,l,w;
   static int nw,vw,dw;
   const char *pdesc;
   static char format[80]   = "";
     
-  if (format[0]==0) {
+  if (format[0] == '\0') {
     w=getwidth();
     if (w == -1) {
       nw=14, vw=14, dw=44;
-      for (i=0; i<np; i++) {
+      for (i = 0; i < array->n_pkgs; i++) {
 	const char *pdesc;
 	int plen, vlen, dlen;
 
-	pdesc= pkg->installed.valid ? pkg->installed.description : 0;
+	pdesc = pkg->installed.valid ? pkg->installed.description : NULL;
 	if (!pdesc) pdesc= _("(no description available)");
 
-	plen= strlen(pkgl[i]->name);
-	vlen = strlen(versiondescribe(&pkgl[i]->installed.version, vdew_nonambig));
+	plen = strlen(array->pkgs[i]->name);
+	vlen = strlen(versiondescribe(&array->pkgs[i]->installed.version,
+	                              vdew_nonambig));
 	dlen= strcspn(pdesc, "\n");
 	if (plen > nw) nw = plen;
 	if (vlen > vw) vw = vlen;
@@ -125,7 +115,7 @@ static void list1package(struct pkginfo *pkg, int *head,
     fputs(_("\
 Desired=Unknown/Install/Remove/Purge/Hold\n\
 | Status=Not/Inst/Cfg-files/Unpacked/Failed-cfg/Half-inst/trig-aWait/Trig-pend\n\
-|/ Err?=(none)/Hold/Reinst-required/X=both-problems (Status,Err: uppercase=bad)\n"), stdout);
+|/ Err?=(none)/Reinst-required (Status,Err: uppercase=bad)\n"), stdout);
     printf(format,'|','|','/', _("Name"), _("Version"), 40, _("Description"));
     printf("+++-");					/* status */
     for (l=0;l<nw;l++) printf("="); printf("-");	/* packagename */
@@ -139,38 +129,29 @@ Desired=Unknown/Install/Remove/Purge/Hold\n\
   printf(format,
          "uihrp"[pkg->want],
          "ncHUFWti"[pkg->status],
-         " R?#"[pkg->eflag],
+         " R"[pkg->eflag],
          pkg->name,
          versiondescribe(&pkg->installed.version, vdew_nonambig),
          l, pdesc);
 }
 
 void listpackages(const char *const *argv) {
-  struct pkgiterator *it;
+  struct pkg_array array;
   struct pkginfo *pkg;
-  struct pkginfo **pkgl;
-  int np, i, head;
+  int i, head;
 
   modstatdb_init(admindir,msdbrw_readonly);
 
-  np= countpackages();
-  pkgl= m_malloc(sizeof(struct pkginfo*)*np);
-  it= iterpkgstart(); i=0;
-  while ((pkg= iterpkgnext(it))) {
-    assert(i<np);
-    pkgl[i++]= pkg;
-  }
-  iterpkgend(it);
-  assert(i==np);
+  pkg_array_init_from_db(&array);
+  pkg_array_sort(&array, pkg_sorter_by_name);
 
-  qsort(pkgl, np, sizeof(struct pkginfo*), pkglistqsortcmp);
   head = 0;
 
   if (!*argv) {
-    for (i=0; i<np; i++) {
-      pkg= pkgl[i];
+    for (i = 0; i < array.n_pkgs; i++) {
+      pkg = array.pkgs[i];
       if (pkg->status == stat_notinstalled) continue;
-      list1package(pkg, &head, pkgl, np);
+      list1package(pkg, &head, &array);
     }
   } else {
     int argc, ip, *found;
@@ -179,11 +160,11 @@ void listpackages(const char *const *argv) {
     found = m_malloc(sizeof(int) * argc);
     memset(found, 0, sizeof(int) * argc);
 
-    for (i = 0; i < np; i++) {
-      pkg = pkgl[i];
+    for (i = 0; i < array.n_pkgs; i++) {
+      pkg = array.pkgs[i];
       for (ip = 0; ip < argc; ip++) {
         if (!fnmatch(argv[ip], pkg->name, 0)) {
-          list1package(pkg, &head, pkgl, np);
+          list1package(pkg, &head, &array);
           found[ip]++;
           break;
         }
@@ -195,13 +176,15 @@ void listpackages(const char *const *argv) {
     for (ip = 0; ip < argc; ip++) {
       if (!found[ip]) {
         fprintf(stderr, _("No packages found matching %s.\n"), argv[ip]);
-        nerrs++;
+        failures++;
       }
     }
   }
 
-  if (ferror(stdout)) werr("stdout");
-  if (ferror(stderr)) werr("stderr");  
+  m_output(stdout, _("<standard output>"));
+  m_output(stderr, _("<standard error>"));
+
+  pkg_array_free(&array);
   modstatdb_shutdown();
 }
 
@@ -244,6 +227,7 @@ void searchfiles(const char *const *argv) {
   struct fileiterator *it;
   const char *thisarg;
   int found;
+  struct varbuf path = VARBUF_INIT;
   static struct varbuf vb;
   
   if (!*argv)
@@ -253,8 +237,21 @@ void searchfiles(const char *const *argv) {
   ensure_allinstfiles_available_quiet();
   ensure_diversions();
 
-  while ((thisarg= *argv++) != 0) {
+  while ((thisarg = *argv++) != NULL) {
     found= 0;
+
+    /* Trim trailing slash and slash dot from the argument if it's
+     * not a pattern, just a path.
+     */
+    if (!strpbrk(thisarg, "*[?\\")) {
+      varbufreset(&path);
+      varbufaddstr(&path, thisarg);
+      varbufaddc(&path, '\0');
+
+      path.used = path_rtrim_slash_slashdot(path.buf);
+      thisarg = path.buf;
+    }
+
     if (!strchr("*[?/",*thisarg)) {
       varbufreset(&vb);
       varbufaddc(&vb,'*');
@@ -263,12 +260,12 @@ void searchfiles(const char *const *argv) {
       varbufaddc(&vb,0);
       thisarg= vb.buf;
     }
-    if (strcspn(thisarg,"*[?\\") == strlen(thisarg)) {
+    if (!strpbrk(thisarg, "*[?\\")) {
       namenode= findnamenode(thisarg, 0);
       found += searchoutput(namenode);
     } else {
       it= iterfilestart();
-      while ((namenode= iterfilenext(it)) != 0) {
+      while ((namenode = iterfilenext(it)) != NULL) {
         if (fnmatch(thisarg,namenode->name,0)) continue;
         found+= searchoutput(namenode);
       }
@@ -276,17 +273,18 @@ void searchfiles(const char *const *argv) {
     }
     if (!found) {
       fprintf(stderr,_("dpkg: %s not found.\n"),thisarg);
-      nerrs++;
-      if (ferror(stderr)) werr("stderr");
+      failures++;
+      m_output(stderr, _("<standard error>"));
     } else {
-      if (ferror(stdout)) werr("stdout");
+      m_output(stdout, _("<standard output>"));
     }
   }
   modstatdb_shutdown();
+
+  varbuffree(&path);
 }
 
 void enqperpackage(const char *const *argv) {
-  int failures;
   const char *thisarg;
   struct fileinlist *file;
   struct pkginfo *pkg;
@@ -295,13 +293,12 @@ void enqperpackage(const char *const *argv) {
   if (!*argv)
     badusage(_("--%s needs at least one package name argument"), cipaction->olong);
 
-  failures= 0;
   if (cipaction->arg==act_listfiles)
     modstatdb_init(admindir,msdbrw_readonly|msdbrw_noavail);
   else 
     modstatdb_init(admindir,msdbrw_readonly);
 
-  while ((thisarg= *argv++) != 0) {
+  while ((thisarg = *argv++) != NULL) {
     pkg= findpackage(thisarg);
 
     switch (cipaction->arg) {
@@ -316,7 +313,7 @@ void enqperpackage(const char *const *argv) {
         fprintf(stderr,_("Package `%s' is not installed and no info is available.\n"),pkg->name);
         failures++;
       } else {
-        writerecord(stdout, "<stdout>", pkg, &pkg->installed);
+        writerecord(stdout, _("<standard output>"), pkg, &pkg->installed);
       }
       break;
 
@@ -325,7 +322,7 @@ void enqperpackage(const char *const *argv) {
         fprintf(stderr,_("Package `%s' is not available.\n"),pkg->name);
         failures++;
       } else {
-        writerecord(stdout, "<stdout>", pkg, &pkg->available);
+        writerecord(stdout, _("<standard output>"), pkg, &pkg->available);
       }
       break;
       
@@ -366,52 +363,42 @@ void enqperpackage(const char *const *argv) {
       break;
 
     default:
-      internerr("unknown action");
+      internerr("unknown action '%d'", cipaction->arg);
     }
 
-    if (*(argv + 1) == 0)
+    if (*(argv + 1) == NULL)
       putchar('\n');
-    if (ferror(stdout)) werr("stdout");
+
+    m_output(stdout, _("<standard output>"));
   }
 
   if (failures) {
-    nerrs++;
     fputs(_("Use dpkg --info (= dpkg-deb --info) to examine archive files,\n"
          "and dpkg --contents (= dpkg-deb --contents) to list their contents.\n"),stderr);
-    if (ferror(stdout)) werr("stdout");
+    m_output(stderr, _("<standard error>"));
   }
   modstatdb_shutdown();
 }
 
 void showpackages(const char *const *argv) {
-  struct pkgiterator *it;
+  struct pkg_array array;
   struct pkginfo *pkg;
-  struct pkginfo **pkgl;
-  int np, i;
+  int i;
   struct lstitem* fmt = parseformat(showformat);
 
   if (!fmt) {
-    nerrs++;
+    failures++;
     return;
   }
 
   modstatdb_init(admindir,msdbrw_readonly);
 
-  np= countpackages();
-  pkgl= m_malloc(sizeof(struct pkginfo*)*np);
-  it= iterpkgstart(); i=0;
-  while ((pkg= iterpkgnext(it))) {
-    assert(i<np);
-    pkgl[i++]= pkg;
-  }
-  iterpkgend(it);
-  assert(i==np);
+  pkg_array_init_from_db(&array);
+  pkg_array_sort(&array, pkg_sorter_by_name);
 
-  qsort(pkgl,np,sizeof(struct pkginfo*),pkglistqsortcmp);
-  
   if (!*argv) {
-    for (i=0; i<np; i++) {
-      pkg= pkgl[i];
+    for (i = 0; i < array.n_pkgs; i++) {
+      pkg = array.pkgs[i];
       if (pkg->status == stat_notinstalled) continue;
       show1package(fmt,pkg);
     }
@@ -422,8 +409,8 @@ void showpackages(const char *const *argv) {
     found = m_malloc(sizeof(int) * argc);
     memset(found, 0, sizeof(int) * argc);
 
-    for (i = 0; i < np; i++) {
-      pkg = pkgl[i];
+    for (i = 0; i < array.n_pkgs; i++) {
+      pkg = array.pkgs[i];
       for (ip = 0; ip < argc; ip++) {
         if (!fnmatch(argv[ip], pkg->name, 0)) {
           show1package(fmt, pkg);
@@ -438,39 +425,158 @@ void showpackages(const char *const *argv) {
     for (ip = 0; ip < argc; ip++) {
       if (!found[ip]) {
         fprintf(stderr, _("No packages found matching %s.\n"), argv[ip]);
-        nerrs++;
+        failures++;
       }
     }
   }
 
-  if (ferror(stdout)) werr("stdout");
-  if (ferror(stderr)) werr("stderr");  
+  m_output(stdout, _("<standard output>"));
+  m_output(stderr, _("<standard error>"));
+
+  pkg_array_free(&array);
   freeformat(fmt);
   modstatdb_shutdown();
 }
 
-void
-printversion(void)
+static void
+control_path_file(struct pkginfo *pkg, const char *control_file)
 {
-  if (printf(_("Debian `%s' package management program query tool\n"),
-	     DPKGQUERY) < 0) werr("stdout");
-  if (printf(_("This is free software; see the GNU General Public License version 2 or\n"
-	       "later for copying conditions. There is NO warranty.\n"
-	       "See %s --license for copyright and license details.\n"),
-	     DPKGQUERY) < 0) werr("stdout");
-}
-/*
-   options that need fixing:
-  dpkg --yet-to-unpack                 \n\
-  */
-void
-usage(void)
-{
-  if (printf(_(
-"Usage: %s [<option> ...] <command>\n"
-"\n"), DPKGQUERY) < 0) werr ("stdout");
+  const char *control_path;
+  struct stat st;
 
-  if (printf(_(
+  /* Do not expose internal database files. */
+  if (strcmp(control_file, LISTFILE) == 0 ||
+      strcmp(control_file, CONFFILESFILE) == 0)
+    return;
+
+  control_path = pkgadminfile(pkg, control_file);
+
+  if (stat(control_path, &st) < 0)
+    return;
+
+  if (!S_ISREG(st.st_mode))
+    return;
+
+  printf("%s\n", control_path);
+}
+
+static void
+control_path_pkg(struct pkginfo *pkg)
+{
+  DIR *db_dir;
+  struct dirent *db_de;
+  struct varbuf db_path;
+  size_t db_path_len;
+
+  varbufinit(&db_path, 0);
+  varbufaddstr(&db_path, admindir);
+  varbufaddstr(&db_path, "/" INFODIR);
+  db_path_len = db_path.used;
+  varbufaddc(&db_path, '\0');
+
+  db_dir = opendir(db_path.buf);
+  if (!db_dir)
+    ohshite(_("cannot read info directory"));
+
+  push_cleanup(cu_closedir, ~0, NULL, 0, 1, (void *)db_dir);
+  while ((db_de = readdir(db_dir)) != NULL) {
+    const char *p;
+
+    /* Ignore dotfiles, including ‘.’ and ‘..’. */
+    if (db_de->d_name[0] == '.')
+      continue;
+
+    /* Ignore anything odd. */
+    p = strrchr(db_de->d_name, '.');
+    if (!p)
+      continue;
+
+    /* Ignore files from other packages. */
+    if (strlen(pkg->name) != (size_t)(p - db_de->d_name) ||
+        strncmp(db_de->d_name, pkg->name, p - db_de->d_name))
+      continue;
+
+    /* Skip past the full stop. */
+    p++;
+
+    /* Do not expose internal database files. */
+    if (strcmp(p, LISTFILE) == 0 ||
+        strcmp(p, CONFFILESFILE) == 0)
+      continue;
+
+    if (strlen(p) > MAXCONTROLFILENAME)
+      continue;
+
+    db_path.used = db_path_len;
+    varbufaddstr(&db_path, db_de->d_name);
+    varbufaddc(&db_path, '\0');
+
+    printf("%s\n", db_path.buf);
+  }
+  pop_cleanup(ehflag_normaltidy); /* closedir */
+
+  varbuffree(&db_path);
+}
+
+static void
+control_path(const char *const *argv)
+{
+  struct pkginfo *pkg;
+  const char *pkg_name;
+  const char *control_file;
+
+  pkg_name = *argv++;
+  control_file = *argv++;
+
+  if (!pkg_name)
+    badusage(_("--%s needs at least one package name argument"),
+             cipaction->olong);
+
+  /* Validate control file name for sanity. */
+  if (control_file) {
+    const char *c;
+
+    for (c = "/."; *c; c++)
+      if (strchr(control_file, *c))
+        badusage(_("control file contains %c"), *c);
+  }
+
+  modstatdb_init(admindir, msdbrw_readonly | msdbrw_noavail);
+
+  pkg = findpackage(pkg_name);
+  if (pkg->status == stat_notinstalled)
+    badusage(_("Package `%s' is not installed.\n"), pkg->name);
+
+  if (control_file)
+    control_path_file(pkg, control_file);
+  else
+    control_path_pkg(pkg);
+
+  modstatdb_shutdown();
+}
+
+static void
+printversion(const struct cmdinfo *ci, const char *value)
+{
+  printf(_("Debian `%s' package management program query tool\n"), DPKGQUERY);
+  printf(_(
+"This is free software; see the GNU General Public License version 2 or\n"
+"later for copying conditions. There is NO warranty.\n"
+"See %s --license for copyright and license details.\n"), DPKGQUERY);
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
+}
+
+static void
+usage(const struct cmdinfo *ci, const char *value)
+{
+  printf(_(
+"Usage: %s [<option> ...] <command>\n"
+"\n"), DPKGQUERY);
+
+  printf(_(
 "Commands:\n"
 "  -s|--status <package> ...        Display package status details.\n"
 "  -p|--print-avail <package> ...   Display available version details.\n"
@@ -478,49 +584,44 @@ usage(void)
 "  -l|--list [<pattern> ...]        List packages concisely.\n"
 "  -W|--show <pattern> ...          Show information on package(s).\n"
 "  -S|--search <pattern> ...        Find package(s) owning file(s).\n"
-"\n")) < 0) werr ("stdout");
+"  -c|--control-path <package> [<file>]\n"
+"                                   Print path for package control file.\n"
+"\n"));
 
-  if (printf(_(
+  printf(_(
 "  -h|--help                        Show this help message.\n"
 "  --version                        Show the version.\n"
 "  --license|--licence              Show the copyright licensing terms.\n"
-"\n")) < 0) werr ("stdout");
+"\n"));
 
-  if (printf(_(
+  printf(_(
 "Options:\n"
 "  --admindir=<directory>           Use <directory> instead of %s.\n"
 "  -f|--showformat=<format>         Use alternative format for --show.\n"
-"\n"), ADMINDIR) < 0) werr ("stdout");
+"\n"), ADMINDIR);
 
-  if (printf(_(
+  printf(_(
 "Format syntax:\n"
 "  A format is a string that will be output for each package. The format\n"
 "  can include the standard escape sequences \\n (newline), \\r (carriage\n"
 "  return) or \\\\ (plain backslash). Package information can be included\n"
 "  by inserting variable references to package fields using the ${var[;width]}\n"
 "  syntax. Fields will be right-aligned unless the width is negative in which\n"
-"  case left alignment will be used.\n")) < 0) werr ("stdout");
+"  case left alignment will be used.\n"));
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
 }
 
 const char thisname[]= "dpkg-query";
 const char printforhelp[]= N_("\
 Use --help for help about querying packages;\n\
-Use --license for copyright license and lack of warranty (GNU GPL).\n\
-\n");
+Use --license for copyright license and lack of warranty (GNU GPL).");
 
-const struct cmdinfo *cipaction= 0;
-int f_pending=0, f_recursive=0, f_alsoselect=1, f_skipsame=0, f_noact=0;
-int f_autodeconf=0, f_nodebsig=0;
-unsigned long f_debug=0;
-/* Change fc_overwrite to 1 to enable force-overwrite by default */
-int fc_hold=0;
-int fc_conflicts=0, fc_depends=0;
-int fc_badpath=0;
+const struct cmdinfo *cipaction = NULL;
 
-int errabort = 50;
 const char *admindir= ADMINDIR;
-const char *instdir= "";
-struct packageinlist *ignoredependss=0;
 
 static void setaction(const struct cmdinfo *cip, const char *value) {
   if (cipaction)
@@ -535,9 +636,9 @@ static const struct cmdinfo cmdinfos[]= {
    * have a very similar structure.
    */
 #define ACTION(longopt,shortopt,code,function) \
- { longopt, shortopt, 0,0,0, setaction, code, 0, (voidfnp)function }
+ { longopt, shortopt, 0, NULL, NULL, setaction, code, NULL, (voidfnp)function }
 #define OBSOLETE(longopt,shortopt) \
- { longopt, shortopt, 0,0,0, setobsolete, 0, 0, 0 }
+ { longopt, shortopt, 0, NULL, NULL, setobsolete, 0, NULL, NULL }
 
   ACTION( "listfiles",                      'L', act_listfiles,     enqperpackage   ),
   ACTION( "status",                         's', act_status,        enqperpackage   ),
@@ -545,31 +646,40 @@ static const struct cmdinfo cmdinfos[]= {
   ACTION( "list",                           'l', act_listpackages,  listpackages    ),
   ACTION( "search",                         'S', act_searchfiles,   searchfiles     ),
   ACTION( "show",                           'W', act_listpackages,  showpackages    ),
+  ACTION( "control-path",                   'c', act_controlpath,   control_path    ),
 
-  { "admindir",           0,   1,  0, &admindir,       0                            },
-  { "showformat",        'f',  1,  0, &showformat,     0                            },
-  { "help",              'h',  0,  0, 0,               helponly                     },
-  { "version",            0,   0,  0, 0,               versiononly                  },
-  { "licence",/* UK spelling */ 0,0,0,0,               showcopyright                },
-  { "license",/* US spelling */ 0,0,0,0,               showcopyright                },
-  {  0,                   0                                                         }
+  { "admindir",   0,   1, NULL, &admindir,   NULL          },
+  { "showformat", 'f', 1, NULL, &showformat, NULL          },
+  { "help",       'h', 0, NULL, NULL,        usage         },
+  { "version",    0,   0, NULL, NULL,        printversion  },
+  /* UK spelling. */
+  { "licence",    0,   0, NULL, NULL,        showcopyright },
+  /* US spelling */
+  { "license",    0,   0, NULL, NULL,        showcopyright },
+  {  NULL,        0,   0, NULL, NULL,        NULL          }
 };
 
 int main(int argc, const char *const *argv) {
   jmp_buf ejbuf;
   static void (*actionfunction)(const char *const *argv);
 
-  standard_startup(&ejbuf, argc, &argv, NULL, 0, cmdinfos);
+  setlocale(LC_ALL, "");
+  bindtextdomain(PACKAGE, LOCALEDIR);
+  textdomain(PACKAGE);
+
+  standard_startup(&ejbuf);
+  myopt(&argv, cmdinfos);
+
   if (!cipaction) badusage(_("need an action option"));
 
-  setvbuf(stdout,0,_IONBF,0);
+  setvbuf(stdout, NULL, _IONBF, 0);
   filesdbinit();
 
   actionfunction= (void (*)(const char* const*))cipaction->farg;
 
   actionfunction(argv);
 
-  standard_shutdown(0);
+  standard_shutdown();
 
-  return reportbroken_retexitstatus();
+  return !!failures;
 }

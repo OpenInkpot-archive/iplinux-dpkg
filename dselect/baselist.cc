@@ -2,8 +2,8 @@
  * dselect - Debian package maintenance user interface
  * baselist.cc - list of somethings
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2001 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,9 +19,11 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -31,10 +33,9 @@ extern "C" {
 #include <sys/ioctl.h>
 #include <sys/termios.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "bindings.h"
 
@@ -171,7 +172,7 @@ void baselist::startdisplay() {
   if (!whatinfowin) ohshite(_("failed to create whatinfo window"));
   wattrset(whatinfowin,whatinfo_attr);
   
-  listpad= newpad(nitems+1, total_width);
+  listpad = newpad(ymax, total_width);
   if (!listpad) ohshite(_("failed to create baselist pad"));
   
   colheadspad= newpad(1, total_width);
@@ -201,12 +202,12 @@ void baselist::startdisplay() {
 
   if (debug)
     fprintf(debug,
-            _("baselist::startdisplay() done ...\n\n"
+            "baselist::startdisplay() done ...\n\n"
             " xmax=%d, ymax=%d;\n\n"
             " title_height=%d, colheads_height=%d, list_height=%d;\n"
             " thisstate_height=%d, info_height=%d, whatinfo_height=%d;\n\n"
             " colheads_row=%d, thisstate_row=%d, info_row=%d;\n"
-            " whatinfo_row=%d, list_row=%d;\n\n"),
+            " whatinfo_row=%d, list_row=%d;\n\n",
             xmax, ymax,
             title_height, colheads_height, list_height,
             thisstate_height, info_height, whatinfo_height,
@@ -328,7 +329,7 @@ void baselist::wordwrapinfo(int offset, const char *m) {
     const char *p= strchr(m,'\n');
     int l= p ? (int)(p-m) : strlen(m);
     while (l && isspace(m[l-1])) l--;
-    if (!l || *m == '.' && l == 1) {
+    if (!l || (*m == '.' && l == 1)) {
       if (wrapping) waddch(infopad,'\n');
       waddch(infopad,'\n');
       wrapping= 0;

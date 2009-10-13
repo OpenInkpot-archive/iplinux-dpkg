@@ -2,8 +2,8 @@
  * dselect - Debian package maintenance user interface
  * pkglist.cc - package list administration
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2001 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,19 +19,21 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "bindings.h"
 
@@ -120,8 +122,8 @@ void packagelist::addheading(enum ssavailval ssavail,
   
   if (debug) fprintf(debug,"packagelist[%p]::addheading(%d,%d,%d,%s,%s)\n",
                      this,ssavail,ssstate,priority,
-                     otherpriority ? otherpriority : _("<null>"),
-                     section ? section : _("<null>"));
+                     otherpriority ? otherpriority : "<null>",
+                     section ? section : "<null>");
 
   struct pkginfo *newhead= new pkginfo;
   newhead->name= 0;
@@ -344,15 +346,7 @@ void packagelist::sortmakeheads() {
   }
 
   if (listpad) {
-    int maxx, maxy;
-    getmaxyx(listpad,maxx,maxy);
-    if (nitems > maxy) {
-      delwin(listpad);
-      listpad= newpad(nitems+1, total_width);
-      if (!listpad) ohshite("failed to create larger baselist pad");
-    } else if (nitems < maxy) {
-      werase(listpad);
-    }
+    werase(listpad);
   }
   
   sortinplace();
@@ -406,7 +400,7 @@ packagelist::packagelist(keybindings *kb) : baselist(kb) {
     if (readwrite && pkg->want == pkginfo::want_unknown) {
       state->suggested=
         pkg->status == pkginfo::stat_installed ||
-          pkg->priority <= pkginfo::pri_standard /* fixme: configurable */
+          pkg->priority <= pkginfo::pri_standard /* FIXME: configurable */
             ? pkginfo::want_install : pkginfo::want_purge;
       state->spriority= sp_inherit;
     } else {
@@ -421,7 +415,8 @@ packagelist::packagelist(keybindings *kb) : baselist(kb) {
     table[nitems]= state;
     nitems++;
   }
-  if (!nitems) ohshit("There are no packages.");
+  if (!nitems)
+    ohshit(_("There are no packages."));
   recursive= 0;
   sortorder= so_priority;
   statsortorder= sso_avail;
@@ -568,14 +563,18 @@ pkginfo **packagelist::display() {
   if (debug) fprintf(debug,"packagelist[%p]::display() entering loop\n",this);
   for (;;) {
     if (whatinfo_height) wcursyncup(whatinfowin);
-    if (doupdate() == ERR) ohshite("doupdate failed");
+    if (doupdate() == ERR)
+      ohshite(_("doupdate failed"));
     signallist= this;
-    if (sigprocmask(SIG_UNBLOCK,&sigwinchset,0)) ohshite("failed to unblock SIGWINCH");
+    if (sigprocmask(SIG_UNBLOCK, &sigwinchset, 0))
+      ohshite(_("failed to unblock SIGWINCH"));
     do
     response= getch();
     while (response == ERR && errno == EINTR);
-    if (sigprocmask(SIG_BLOCK,&sigwinchset,0)) ohshite("failed to re-block SIGWINCH");
-    if (response == ERR) ohshite("getch failed");
+    if (sigprocmask(SIG_BLOCK, &sigwinchset, 0))
+      ohshite(_("failed to re-block SIGWINCH"));
+    if (response == ERR)
+      ohshite(_("getch failed"));
     interp= (*bindings)(response);
     if (debug)
       fprintf(debug,"packagelist[%p]::display() response=%d interp=%s\n",

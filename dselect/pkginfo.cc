@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * pkginfo.cc - handles (re)draw of package list window infopad
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -18,19 +18,19 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 #include <ctype.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "bindings.h"
 #include "helpmsgs.h"
@@ -108,6 +108,8 @@ void packagelist::itd_description() {
 
   if (table[cursorline]->pkg->name) {
     const char *m= table[cursorline]->pkg->available.description;
+    if (!m || !*m)
+      m = table[cursorline]->pkg->installed.description;
     if (!m || !*m)
       m = _("No description available.");
     const char *p= strchr(m,'\n');

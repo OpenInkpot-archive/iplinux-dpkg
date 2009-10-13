@@ -2,8 +2,8 @@
  * dselect - Debian package maintenance user interface
  * main.cc - main program
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2000,2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2000,2001 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,9 +19,11 @@
  * License along with dpkg; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -37,13 +39,22 @@ extern "C" {
 #include <ctype.h>
 #include <assert.h>
 
-#include <ncursesw/term.h>
+#if HAVE_LOCALE_H
+#include <locale.h>
+#endif
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
-}
+#if defined(HAVE_NCURSESW_TERM_H)
+#include <ncursesw/term.h>
+#elif defined(HAVE_NCURSES_TERM_H)
+#include <ncurses/term.h>
+#else
+#include <term.h>
+#endif
+
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
+
 #include "dselect.h"
 #include "bindings.h"
 #include "pkglist.h"
@@ -155,57 +166,65 @@ static const char licensestring[]= N_(
       "later for copying conditions. There is NO warranty.\n"
       "See %s --license for copyright and license details.\n");
 
-void
-printversion(void)
+static void
+printversion(const struct cmdinfo *ci, const char *value)
 {
-  if (printf(gettext(programdesc), DSELECT, DPKG_VERSION_ARCH) < 0)
-    werr("stdout");
-  if (printf(gettext(copyrightstring)) < 0) werr("stdout");
-  if (printf(gettext(licensestring), DSELECT) < 0) werr("stdout");
+  printf(gettext(programdesc), DSELECT, DPKG_VERSION_ARCH);
+  printf(gettext(copyrightstring));
+  printf(gettext(licensestring), DSELECT);
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
 }
 
-void
-usage(void)
+static void
+usage(const struct cmdinfo *ci, const char *value)
 {
   int i;
-  if (printf(_(
-"Usage: %s [<option> ...] [<action> ...]\n"
-"\n"), DSELECT) < 0) werr("stdout");
 
-  if (printf(_(
+  printf(_(
+"Usage: %s [<option> ...] [<action> ...]\n"
+"\n"), DSELECT);
+
+  printf(_(
 "Options:\n"
 "  --admindir <directory>     Use <directory> instead of %s.\n"
 "  --expert                   Turn on expert mode.\n"
 "  --debug <file> | -D<file>  Turn on debugging, sending output to <file>.\n"
 "  --colour | --color screenpart:[foreground],[background][:attr[+attr+..]]\n"
 "                             Configure screen colours.\n"
-"\n"), ADMINDIR) < 0) werr("stdout");
+"\n"), ADMINDIR);
 
-  if (printf(_(
+  printf(_(
 "  --help                     Show this help message.\n"
 "  --version                  Show the version.\n"
 "  --license | --licence      Show the license.\n"
-"\n")) < 0) werr("stdout");
+"\n"));
 
-  if (printf(_(
+  printf(_(
 "Actions:\n"
 "  access update select install config remove quit\n"
-"\n")) < 0) werr("stdout");
+"\n"));
 
   printf(_("Screenparts:\n"));
   for (i=0; screenparttable[i].name; i++)
     printf("  %s", screenparttable[i].name);
-  if (!fputs("\n\n", stdout)) werr("stdout");
+  fputs("\n\n", stdout);
 
   printf(_("Colours:\n"));
   for (i=0; colourtable[i].name; i++)
     printf("  %s", colourtable[i].name);
-  if (!fputs("\n\n", stdout)) werr("stdout");
+  fputs("\n\n", stdout);
 
   printf(_("Attributes:\n"));
   for (i=0; attrtable[i].name; i++)
     printf("  %s", attrtable[i].name);
-  if (!fputs("\n\n", stdout)) werr("stdout");
+  fputs("\n\n", stdout);
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
 }
 
 /* These are called by C code, so need to have C calling convention */
@@ -221,7 +240,9 @@ extern "C" {
     expertmode= 1;
   }
 
-  int findintable(const struct table_t *table, const char *item, const char *tablename) {
+  static int
+  findintable(const struct table_t *table, const char *item, const char *tablename)
+  {
     int i;
 
     for (i= 0;  item && (table[i].name!=NULL); i++)
@@ -287,8 +308,8 @@ static const struct cmdinfo cmdinfos[]= {
   { "admindir",     0,   1,  0,  &admindir,  0               },
   { "debug",       'D',  1,  0,  0,          setdebug        },
   { "expert",      'E',  0,  0,  0,          setexpert       },
-  { "help",        'h',  0,  0,  0,          helponly        },
-  { "version",      0,   0,  0,  0,          versiononly     },
+  { "help",        'h',  0,  0,  0,          usage           },
+  { "version",      0,   0,  0,  0,          printversion    },
   { "licence",      0,   0,  0,  0,          showcopyright   }, /* UK spelling */
   { "license",      0,   0,  0,  0,          showcopyright   }, /* US spelling */
   { "color",        0,   1,  0,  0,          setcolor        }, /* US spelling */
@@ -354,7 +375,9 @@ urqresult urq_list(void) {
   return urqr_normal;
 }
 
-void dme(int i, int so) {
+static void
+dme(int i, int so)
+{
   char buf[120];
   const menuentry *me= &menuentries[i];
   sprintf(buf," %c %d. %-11.11s %-80.80s ",
@@ -370,7 +393,9 @@ void dme(int i, int so) {
   attrset(A_NORMAL);
 }
 
-int refreshmenu(void) {
+static int
+refreshmenu(void)
+{
   char buf[2048];
   static int l,lockfd;
   static char *lockfile;
@@ -414,7 +439,7 @@ int refreshmenu(void) {
 
 urqresult urq_menu(void) {
 #define C(x) ((x)-'a'+1)
-  int entries, c, i;
+  int entries, c;
   entries= refreshmenu();
   int cursor=0;
   dme(0,1);
@@ -438,7 +463,7 @@ urqresult urq_menu(void) {
       dme(cursor,0); cursor+= entries-1; cursor %= entries; dme(cursor,1);
     } else if (c=='\n' || c=='\r' || c==KEY_ENTER) {
       clear(); refresh();
-      switch (menuentries[cursor].fn()) { /* fixme: trap errors in urq_... */
+      switch (menuentries[cursor].fn()) { /* FIXME: trap errors in urq_... */
       case urqr_quitmenu:
         return urqr_quitmenu;
       case urqr_normal:
@@ -460,7 +485,9 @@ urqresult urq_menu(void) {
       }
     } else if (isalpha(c)) {
       c= tolower(c);
-      for (i=0; i<entries && gettext(menuentries[i].key)[0] != c; i++);
+      int i = 0;
+      while (i < entries && gettext(menuentries[i].key)[0] != c)
+        i++;
       if (i < entries) {
         dme(cursor,0); cursor=i; dme(cursor,1);
       } else {
@@ -473,8 +500,8 @@ urqresult urq_menu(void) {
 }
 
 urqresult urq_quit(void) {
+  /* FIXME: check packages OK. */
   return urqr_quitmenu;
-  /* fixme: check packages OK */
 }
 
 int main(int, const char *const *argv) {
@@ -496,8 +523,9 @@ int main(int, const char *const *argv) {
   if (*argv) {
     const char *a;
     while ((a= *argv++) != 0) {
-      const menuentry *me;
-      for (me= menuentries; me->command && strcmp(me->command,a); me++);
+      const menuentry *me = menuentries;
+      while (me->command && strcmp(me->command, a))
+        me++;
       if (!me->command) badusage(_("unknown action string `%.50s'"),a);
       me->fn();
     }
@@ -506,7 +534,7 @@ int main(int, const char *const *argv) {
   }
 
   cursesoff();
-  standard_shutdown(0);
+  standard_shutdown();
   return(0);
 }
 

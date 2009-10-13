@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * pkgsublist.cc - status modification and recursive package list handling
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -18,18 +18,19 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "bindings.h"
 
@@ -54,14 +55,14 @@ void packagelist::add(pkginfo *pkg) {
 
 void packagelist::add(pkginfo *pkg, pkginfo::pkgwant nw) {
   if (debug) fprintf(debug,"packagelist[%p]::add(pkginfo %s, %s)\n",
-                     this,pkg->name,gettext(wantstrings[nw]));
+                     this, pkg->name, wantstrings[nw]);
   add(pkg);  if (!pkg->clientdata) return;
   pkg->clientdata->direct= nw;
   selpriority np;
   np= would_like_to_install(nw,pkg) ? sp_selecting : sp_deselecting;
   if (pkg->clientdata->spriority > np) return;
   if (debug) fprintf(debug,"packagelist[%p]::add(pkginfo %s, %s) setting\n",
-                     this,pkg->name,gettext(wantstrings[nw]));
+                     this, pkg->name, wantstrings[nw]);
   pkg->clientdata->suggested= pkg->clientdata->selected= nw;
   pkg->clientdata->spriority= np;
     
@@ -78,9 +79,10 @@ void packagelist::add(pkginfo *pkg, const char *extrainfo, showpriority showimp)
 }   
 
 int packagelist::alreadydone(doneent **done, void *check) {
-  doneent *search;
+  doneent *search = *done;
   
-  for (search= *done; search && search->dep != check; search=search->next);
+  while (search && search->dep != check)
+    search = search->next;
   if (search) return 1;
   if (debug) fprintf(debug,"packagelist[%p]::alreadydone(%p,%p) new\n",
                      this,done,check);

@@ -1,4 +1,4 @@
-.TH dpkg\-divert 8 "2007-07-18" "Debian Project" "dpkg utilities"
+.TH dpkg\-divert 8 "2008-08-18" "Debian Project" "dpkg utilities"
 .SH NAME
 dpkg\-divert \- override a package's version of a file
 .
@@ -31,6 +31,10 @@ Remove a diversion for \fIfile\fP.
 .TP
 .BI \-\-list " glob-pattern"
 List diversions matching \fIglob-pattern\fP.
+.TP
+.BI \-\-listpackage " file"
+Print the name of the package that diverts \fIfile\fP.  Prints LOCAL if
+\fIfile\fP is locally diverted and nothing if \fIfile\fP is not diverted.
 .TP
 .BI \-\-truename " file"
 Print the real name for a diverted file.
@@ -119,7 +123,7 @@ Note: \fBdpkg\-divert\fP preserves the old copy of this file, with extension
 .BR dpkg (1).
 .
 .SH AUTHOR
-Copyright (C) 1995 Ian Jackson
+Copyright \(co 1995 Ian Jackson
 .sp
 This is free software; see the GNU General Public Licence version 2 or
 later for copying conditions. There is NO WARRANTY.

@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * helpmsgs.cc - list of help messages
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -18,6 +18,11 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
+
+#include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include "helpmsgs.h"
 

@@ -1,4 +1,4 @@
-# Copyright 2008 Raphaël Hertzog <hertzog@debian.org>
+# Copyright © 2008 Raphaël Hertzog <hertzog@debian.org>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,15 +20,15 @@ use strict;
 use warnings;
 
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(error syserr warning internerr subprocerr);
-use Dpkg::Fields;
-use Dpkg::Cdata;
+use Dpkg::ErrorHandling;
+use Dpkg::Control;
 use Dpkg::Checksums;
-use Dpkg::Version qw(parseversion);
-use Dpkg::Deps qw(@src_dep_fields);
+use Dpkg::Version;
 use Dpkg::Compression;
 use Dpkg::Exit;
 use Dpkg::Path qw(check_files_are_the_same);
+use Dpkg::IPC;
+use Dpkg::Vendor qw(run_vendor_hook);
 
 use POSIX;
 use File::Basename;
@@ -40,14 +40,14 @@ our $diff_ignore_default_regexp = '
 # Ignore emacs recovery files
 (?:^|/)\.#.*$|
 # Ignore vi swap files
-(?:^|/)\..*\.swp$|
+(?:^|/)\..*\.sw.$|
 # Ignore baz-style junk files or directories
 (?:^|/),,.*(?:$|/.*$)|
 # File-names that should be ignored (never directories)
-(?:^|/)(?:DEADJOE|\.cvsignore|\.arch-inventory|\.bzrignore|\.gitignore)$|
+(?:^|/)(?:DEADJOE|\.arch-inventory|\.(?:bzr|cvs|hg|git)ignore)$|
 # File or directory names that should be ignored
-(?:^|/)(?:CVS|RCS|\.deps|\{arch\}|\.arch-ids|\.svn|\.hg|_darcs|\.git|
-\.shelf|_MTN|\.bzr(?:\.backup|tags)?)(?:$|/.*$)
+(?:^|/)(?:CVS|RCS|\.deps|\{arch\}|\.arch-ids|\.svn|\.hg(?:tags)?|_darcs|\.git|
+\.shelf|_MTN|\.be|\.bzr(?:\.backup|tags)?)(?:$|/.*$)
 ';
 # Take out comments and newlines
 $diff_ignore_default_regexp =~ s/^#.*$//mg;
@@ -58,12 +58,13 @@ our @tar_ignore_default_pattern = qw(
 *.la
 *.o
 *.so
-*.swp
+.*.sw?
 *~
 ,,*
 .[#~]*
 .arch-ids
 .arch-inventory
+.be
 .bzr
 .bzr.backup
 .bzr.tags
@@ -73,6 +74,8 @@ our @tar_ignore_default_pattern = qw(
 .git
 .gitignore
 .hg
+.hgignore
+.hgtags
 .shelf
 .svn
 CVS
@@ -83,20 +86,12 @@ _darcs
 {arch}
 );
 
-# Private stuff
-my @dsc_fields = (qw(Format Source Binary Architecture Version Origin
-		     Maintainer Uploaders Dm-Upload-Allowed Homepage
-		     Standards-Version Vcs-Browser Vcs-Arch Vcs-Bzr
-		     Vcs-Cvs Vcs-Darcs Vcs-Git Vcs-Hg Vcs-Mtn Vcs-Svn),
-                  @src_dep_fields,
-                  qw(Checksums-Md5 Checksums-Sha1 Checksums-Sha256 Files));
-
 # Object methods
 sub new {
     my ($this, %args) = @_;
     my $class = ref($this) || $this;
     my $self = {
-        'fields' => Dpkg::Fields::Object->new(),
+        'fields' => Dpkg::Control->new(type => CTRL_PKG_SRC),
         'options' => {},
     };
     bless $self, $class;
@@ -121,6 +116,9 @@ sub init_options {
     } else {
         $self->{'options'}{'tar_ignore'} = [ @tar_ignore_default_pattern ];
     }
+    # Skip debianization while specific to some formats has an impact
+    # on code common to all formats
+    $self->{'options'}{'skip_debianization'} ||= 0;
 }
 
 sub initialize {
@@ -141,9 +139,8 @@ sub initialize {
     close(DSC);
     # Read the fields
     open(CDATA, "<", $filename) || syserr(_g("cannot open %s"), $filename);
-    my $fields = parsecdata(\*CDATA,
-            sprintf(_g("source control file %s"), $filename),
-            allow_pgp => 1);
+    my $fields = Dpkg::Control->new(type => CTRL_PKG_SRC);
+    $fields->parse_fh(\*CDATA, sprintf(_g("source control file %s"), $filename));
     close(CDATA);
     $self->{'fields'} = $fields;
 
@@ -236,10 +233,10 @@ sub get_basename {
     unless (exists $f->{'Source'} and exists $f->{'Version'}) {
         error(_g("source and version are required to compute the source basename"));
     }
-    my %v = parseversion($f->{'Version'});
-    my $basename = $f->{'Source'} . "_" . $v{"version"};
+    my $v = Dpkg::Version->new($f->{'Version'});
+    my $basename = $f->{'Source'} . "_" . $v->version();
     if ($with_revision and $f->{'Version'} =~ /-/) {
-        $basename .= "-" . $v{'revision'};
+        $basename .= "-" . $v->revision();
     }
     return $basename;
 }
@@ -253,7 +250,7 @@ sub find_original_tarballs {
         next unless defined($dir) and -d $dir;
         opendir(DIR, $dir) || syserr(_g("cannot opendir %s"), $dir);
         push @tar, map { "$dir/$_" }
-                  grep { /^\Q$basename\E\.orig(-\w+)?\.tar\.$ext$/ }
+                  grep { /^\Q$basename\E\.orig(-[\w-]+)?\.tar\.$ext$/ }
                   readdir(DIR);
         closedir(DIR);
     }
@@ -268,24 +265,46 @@ sub is_signed {
 sub check_signature {
     my ($self) = @_;
     my $dsc = $self->get_filename();
-    if (-x '/usr/bin/gpg') {
-        my $gpg_command = 'gpg -q --verify ';
-        if (-r '/usr/share/keyrings/debian-keyring.gpg') {
-            $gpg_command = $gpg_command.'--keyring /usr/share/keyrings/debian-keyring.gpg ';
+    my @exec;
+    if (-x '/usr/bin/gpgv') {
+        push @exec, "gpgv";
+    } elsif (-x '/usr/bin/gpg') {
+        push @exec, "gpg", "--no-default-keyring", "-q", "--verify";
+    }
+    if (scalar(@exec)) {
+        if (-r "$ENV{'HOME'}/.gnupg/trustedkeys.gpg") {
+            push @exec, "--keyring", "$ENV{'HOME'}/.gnupg/trustedkeys.gpg";
         }
-        $gpg_command = $gpg_command.quotemeta($dsc).' 2>&1';
+        foreach my $vendor_keyring (run_vendor_hook('keyrings')) {
+            if (-r $vendor_keyring) {
+                push @exec, "--keyring", $vendor_keyring;
+            }
+        }
+        push @exec, $dsc;
 
-        #TODO: cleanup here
-        my @gpg_output = `$gpg_command`;
-        my $gpg_status = $? >> 8;
-        if ($gpg_status) {
-            print STDERR join("",@gpg_output);
-            error(_g("failed to verify signature on %s"), $dsc)
-                if ($gpg_status == 1);
+        my ($stdout, $stderr);
+        fork_and_exec('exec' => \@exec, wait_child => 1, nocheck => 1,
+                      to_string => \$stdout, error_to_string => \$stderr,
+                      timeout => 10);
+        if (WIFEXITED($?)) {
+            my $gpg_status = WEXITSTATUS($?);
+            print STDERR "$stdout$stderr" if $gpg_status;
+            if ($gpg_status == 1 or ($gpg_status &&
+                $self->{'options'}{'require_valid_signature'}))
+            {
+                error(_g("failed to verify signature on %s"), $dsc);
+            } elsif ($gpg_status) {
+                warning(_g("failed to verify signature on %s"), $dsc);
+            }
+        } else {
+            subprocerr("@exec");
         }
     } else {
-        warning(_g("could not verify signature on %s since gpg isn't installed"),
-                $dsc);
+        if ($self->{'options'}{'require_valid_signature'}) {
+            error(_g("could not verify signature on %s since gpg isn't installed"), $dsc);
+        } else {
+            warning(_g("could not verify signature on %s since gpg isn't installed"), $dsc);
+        }
     }
 }
 
@@ -305,6 +324,9 @@ sub parse_cmdline_option {
 sub extract {
     my $self = shift;
     my $newdirectory = $_[0];
+
+    my ($ok, $error) = version_check($self->{'fields'}{'Version'});
+    error($error) unless $ok;
 
     # Copy orig tarballs
     if ($self->{'options'}{'copy_orig_tarballs'}) {
@@ -331,11 +353,13 @@ sub extract {
     }
 
     # Store format if non-standard so that next build keeps the same format
-    if ($self->{'fields'}{'Format'} ne "1.0") {
+    if ($self->{'fields'}{'Format'} ne "1.0" and
+        not $self->{'options'}{'skip_debianization'})
+    {
         my $srcdir = File::Spec->catdir($newdirectory, "debian", "source");
         my $format_file = File::Spec->catfile($srcdir, "format");
         mkdir($srcdir) unless -e $srcdir;
-        open(FORMAT, ">", $format_file) || syserr(_g("can't write %s"), $format_file);
+        open(FORMAT, ">", $format_file) || syserr(_g("cannot write %s"), $format_file);
         print FORMAT $self->{'fields'}{'Format'} . "\n";
         close(FORMAT);
     }
@@ -347,7 +371,8 @@ sub extract {
         unless ($! == ENOENT) {
             syserr(_g("cannot stat %s"), $rules);
         }
-        warning(_g("%s does not exist"), $rules);
+        warning(_g("%s does not exist"), $rules)
+            unless $self->{'options'}{'skip_debianization'};
     } elsif (-f _) {
         chmod($s[2] | 0111, $rules) ||
             syserr(_g("cannot make %s executable"), $rules);
@@ -357,7 +382,8 @@ sub extract {
 }
 
 sub do_extract {
-    error("Dpkg::Source::Package doesn't know how to unpack a source package. Use one of the subclasses.");
+    internerr("Dpkg::Source::Package doesn't know how to unpack a " .
+              "source package. Use one of the subclasses.");
 }
 
 # Function used specifically during creation of a source package
@@ -372,7 +398,8 @@ sub build {
 }
 
 sub do_build {
-    error("Dpkg::Source::Package doesn't know how to build a source package. Use one of the subclasses.");
+    internerr("Dpkg::Source::Package doesn't know how to build a " .
+              "source package. Use one of the subclasses.");
 }
 
 sub can_build {
@@ -384,7 +411,7 @@ sub add_file {
     my ($self, $filename) = @_;
     my ($fn, $dir) = fileparse($filename);
     if (exists $self->{'files'}{$fn}) {
-        internerr(_g("tried to add file `%s' twice"), $fn);
+        internerr("tried to add file '%s' twice", $fn);
     }
     my (%sums, $size);
     getchecksums($filename, \%sums, \$size);
@@ -427,8 +454,8 @@ sub write_dsc {
     open(DSC, ">", $filename) || syserr(_g("cannot write %s"), $filename);
 
     delete $fields->{'Checksums-Md5'}; # identical with Files field
-    tied(%{$fields})->set_field_importance(@dsc_fields);
-    tied(%{$fields})->output(\*DSC, $opts{'substvars'});
+    $fields->apply_substvars($opts{'substvars'});
+    $fields->output(\*DSC);
     close(DSC);
 }
 

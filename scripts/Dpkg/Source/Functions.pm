@@ -3,11 +3,10 @@ package Dpkg::Source::Functions;
 use strict;
 use warnings;
 
-use Exporter;
-our @ISA = qw(Exporter);
+use base qw(Exporter);
 our @EXPORT_OK = qw(erasedir fixperms is_binary);
 
-use Dpkg::ErrorHandling qw(syserr subprocerr failure);
+use Dpkg::ErrorHandling;
 use Dpkg::Gettext;
 use Dpkg::IPC;
 
@@ -25,7 +24,7 @@ sub erasedir {
         return if $! == ENOENT;
         syserr(_g("unable to check for removal of dir `%s'"), $dir);
     }
-    failure(_g("rm -rf failed to remove `%s'"), $dir);
+    error(_g("rm -rf failed to remove `%s'"), $dir);
 }
 
 sub fixperms {
@@ -46,8 +45,8 @@ sub fixperms {
             $modes_set .= qw(r w X)[$j];
         }
     }
-    system('chmod', '-R', $modes_set, '--', $dir);
-    subprocerr("chmod -R $modes_set $dir") if $?;
+    system('chmod', '-R', '--', $modes_set, $dir);
+    subprocerr("chmod -R -- $modes_set $dir") if $?;
 }
 
 sub is_binary($) {

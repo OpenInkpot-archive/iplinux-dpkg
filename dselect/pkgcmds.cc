@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * pkgcmds.cc - package list keyboard commands
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -18,18 +18,16 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
 
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "pkglist.h"
 
@@ -48,8 +46,8 @@ int packagelist::affectedmatches(struct pkginfo *pkg, struct pkginfo *comparewit
   }
   if (comparewith->priority != pkginfo::pri_unset &&
       (comparewith->priority != pkg->priority ||
-       comparewith->priority == pkginfo::pri_other &&
-       strcasecmp(comparewith->otherpriority,pkg->otherpriority)))
+       (comparewith->priority == pkginfo::pri_other &&
+        strcasecmp(comparewith->otherpriority, pkg->otherpriority))))
     return 0;
   if (comparewith->section &&
       strcasecmp(comparewith->section,
@@ -65,8 +63,9 @@ void packagelist::affectedrange(int *startp, int *endp) {
     *endp= cursorline+1;
     return;
   }
-  int index;
-  for (index= cursorline; index < nitems && !table[index]->pkg->name; index++);
+  int index = cursorline;
+  while (index < nitems && !table[index]->pkg->name)
+    index++;
   if (index >= nitems) {
     *startp= *endp= cursorline;
     return;
@@ -279,7 +278,7 @@ packagelist::kd_revertinstalled()
   redrawthisstate();
 }
 
-/* fixme: configurable purge/deselect */
+/* FIXME: configurable purge/deselect */
 
 void packagelist::kd_toggleinfo() {
   showinfo= (showinfo+2) % 3;

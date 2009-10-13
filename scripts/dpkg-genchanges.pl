@@ -9,24 +9,18 @@ use English;
 use Dpkg;
 use Dpkg::Gettext;
 use Dpkg::Checksums;
-use Dpkg::ErrorHandling qw(warning error failure unknown internerr syserr
-                           subprocerr usageerr);
+use Dpkg::ErrorHandling;
 use Dpkg::Arch qw(get_host_arch debarch_eq debarch_is);
-use Dpkg::Fields qw(:list capit);
 use Dpkg::Compression;
+use Dpkg::Control::Info;
+use Dpkg::Control::Fields;
 use Dpkg::Control;
-use Dpkg::Cdata;
 use Dpkg::Substvars;
 use Dpkg::Vars;
 use Dpkg::Changelog qw(parse_changelog);
-use Dpkg::Version qw(parseversion compare_versions);
+use Dpkg::Version;
 
 textdomain("dpkg-dev");
-
-my @changes_fields = qw(Format Date Source Binary Architecture Version
-                        Distribution Urgency Maintainer Changed-By
-                        Description Closes Changes Checksums-Md5
-                        Checksums-Sha1 Checksums-Sha256 Files);
 
 my $controlfile = 'debian/control';
 my $changelogfile = 'debian/changelog';
@@ -133,18 +127,18 @@ Options:
 while (@ARGV) {
     $_=shift(@ARGV);
     if (m/^-b$/) {
-	is_sourceonly && &usageerr(_g("cannot combine %s and -S"), $_);
+	is_sourceonly && usageerr(_g("cannot combine %s and %s"), $_, "-S");
 	$include = BIN;
     } elsif (m/^-B$/) {
-	is_sourceonly && &usageerr(_g("cannot combine %s and -S"), $_);
+	is_sourceonly && usageerr(_g("cannot combine %s and %s"), $_, "-S");
 	$include = ARCH_DEP;
 	printf STDERR _g("%s: arch-specific upload - not including arch-independent packages")."\n", $progname;
     } elsif (m/^-A$/) {
-	is_sourceonly && &usageerr(_g("cannot combine %s and -S"), $_);
+	is_sourceonly && usageerr(_g("cannot combine %s and %s"), $_, "-S");
 	$include = ARCH_INDEP;
 	printf STDERR _g("%s: arch-indep upload - not including arch-specific packages")."\n", $progname;
     } elsif (m/^-S$/) {
-	is_binaryonly && &usageerr(_g("cannot combine %s and -S"), binary_opt);
+	is_binaryonly && usageerr(_g("cannot combine %s and %s"), binary_opt, "-S");
 	$include = SOURCE;
     } elsif (m/^-s([iad])$/) {
         $sourcestyle= $1;
@@ -162,7 +156,6 @@ while (@ARGV) {
 	$since= $POSTMATCH;
     } elsif (m/^-T/) {
 	$varlistfile= $POSTMATCH;
-	warning(_g("substvars support is deprecated (see README.feature-removal-schedule)"));
     } elsif (m/^-m/) {
 	$forcemaint= $POSTMATCH;
     } elsif (m/^-e/) {
@@ -178,9 +171,11 @@ while (@ARGV) {
     } elsif (m/^-V(\w[-:0-9A-Za-z]*)[=:]/) {
 	$substvars->set($1, $POSTMATCH);
     } elsif (m/^-(h|-help)$/) {
-        &usage; exit(0);
+	usage();
+	exit(0);
     } elsif (m/^--version$/) {
-        &version; exit(0);
+	version();
+	exit(0);
     } else {
         usageerr(_g("unknown option \`%s'"), $_);
     }
@@ -189,7 +184,7 @@ while (@ARGV) {
 # Retrieve info from the current changelog entry
 my %options = (file => $changelogfile);
 $options{"changelogformat"} = $changelogformat if $changelogformat;
-$options{"since"} = $since if $since;
+$options{"since"} = $since if defined($since);
 my $changelog = parse_changelog(%options);
 # Change options to retrieve info of the former changelog entry
 delete $options{"since"};
@@ -201,19 +196,24 @@ eval { # Do not fail if parser failed due to unsupported options
 };
 $bad_parser = 1 if ($@);
 # Other initializations
-my $control = Dpkg::Control->new($controlfile);
-my $fields = Dpkg::Fields::Object->new();
+my $control = Dpkg::Control::Info->new($controlfile);
+my $fields = Dpkg::Control->new(type => CTRL_FILE_CHANGES);
 $substvars->set_version_substvars($changelog->{"Version"});
+$substvars->set_arch_substvars();
 $substvars->parse($varlistfile) if -e $varlistfile;
 
 if (defined($prev_changelog) and
-    compare_versions($changelog->{"Version"}, '<', $prev_changelog->{"Version"})) {
+    version_compare_relation($changelog->{"Version"}, REL_LT,
+                             $prev_changelog->{"Version"}))
+{
     warning(_g("the current version (%s) is smaller than the previous one (%s)"),
-	$changelog->{"Version"}, $prev_changelog->{"Version"});
+	$changelog->{"Version"}, $prev_changelog->{"Version"})
+        # ~bpo and ~vola are backports and have lower version number by definition
+        unless $changelog->{"Version"} =~ /~(?:bpo|vola)/;
 }
 
 if (not is_sourceonly) {
-    open(FL,"<",$fileslistfile) || &syserr(_g("cannot read files list file"));
+    open(FL, "<", $fileslistfile) || syserr(_g("cannot read files list file"));
     while(<FL>) {
 	if (m/^(([-+.0-9a-z]+)_([^_]+)_([-\w]+)\.u?deb) (\S+) (\S+)$/) {
 	    defined($p2f{"$2 $4"}) &&
@@ -259,25 +259,19 @@ foreach $_ (keys %{$src_fields}) {
 	set_source_package($v);
     } elsif (m/^Section$|^Priority$/i) {
 	$sourcedefault{$_} = $v;
-    } elsif (m/^Maintainer$/i) {
-	$fields->{$_} = $v;
-    } elsif (s/^X[BS]*C[BS]*-//i) { # Include XC-* fields
-	$fields->{$_} = $v;
-    } elsif (m/^X[BS]+-/i || m/^$control_src_field_regex$/i) {
-	# Silently ignore valid fields
     } else {
-	unknown(_g('general section of control info file'));
+        field_transfer_single($src_fields, $fields);
     }
 }
 
 # Scan control info of all binary packages
 foreach my $pkg ($control->get_packages()) {
     my $p = $pkg->{"Package"};
-    my $a = $pkg->{"Architecture"};
+    my $a = $pkg->{"Architecture"} || "";
     my $d = $pkg->{"Description"} || "no description available";
     $d = $1 if $d =~ /^(.*)\n/;
     my $pkg_type = $pkg->{"Package-Type"} ||
-                   tied(%$pkg)->get_custom_field("Package-Type") || "deb";
+                   $pkg->get_custom_field("Package-Type") || "deb";
 
     my @f; # List of files for this binary package
     push @f, @{$p2f{$p}} if defined $p2f{$p};
@@ -307,8 +301,6 @@ foreach my $pkg ($control->get_packages()) {
 	    $f2seccf{$_} = $v foreach (@f);
 	} elsif (m/^Priority$/) {
 	    $f2pricf{$_} = $v foreach (@f);
-	} elsif (s/^X[BS]*C[BS]*-//i) { # Include XC-* fields
-	    $fields->{$_} = $v;
 	} elsif (m/^Architecture$/) {
 	    if (grep(debarch_is($host_arch, $_), split(/\s+/, $v))
 		and ($include & ARCH_DEP)) {
@@ -317,10 +309,10 @@ foreach my $pkg ($control->get_packages()) {
 		$v = '';
 	    }
 	    push(@archvalues,$v) unless !$v || $archadded{$v}++;
-	} elsif (m/^$control_pkg_field_regex$/ || m/^X[BS]+-/i) {
-	    # Silently ignore valid fields
+        } elsif (m/^Description$/) {
+            # Description in changes is computed, do not copy this field
 	} else {
-	    unknown(_g("package's section of control info file"));
+            field_transfer_single($pkg, $fields);
 	}
     }
 }
@@ -332,18 +324,14 @@ foreach $_ (keys %{$changelog}) {
 	set_source_package($v);
     } elsif (m/^Maintainer$/i) {
 	$fields->{"Changed-By"} = $v;
-    } elsif (m/^(Version|Changes|Urgency|Distribution|Date|Closes)$/i) {
-	$fields->{$_} = $v;
-    } elsif (s/^X[BS]*C[BS]*-//i) {
-	$fields->{$_} = $v;
-    } elsif (!m/^X[BS]+-/i) {
-	unknown(_g("parsed version of changelog"));
+    } else {
+        field_transfer_single($changelog, $fields);
     }
 }
 
 if ($changesdescription) {
     $fields->{'Changes'} = '';
-    open(X,"<",$changesdescription) || &syserr(_g("read changesdescription"));
+    open(X, "<", $changesdescription) || syserr(_g("read changesdescription"));
     while(<X>) {
         s/\s*\n$//;
         $_= '.' unless m/\S/;
@@ -402,8 +390,9 @@ if (!is_binaryonly) {
     open(CDATA, "<", $dsc) || syserr(_g("cannot open .dsc file %s"), $dsc);
     push(@sourcefiles,"${sourcepackage}_${sversion}.dsc");
 
-    my $dsc_fields = parsecdata(\*CDATA, sprintf(_g("source control file %s"), $dsc),
-				allow_pgp => 1);
+    my $dsc_fields = Dpkg::Control->new(type => CTRL_PKG_SRC);
+    $dsc_fields->parse_fh(\*CDATA, sprintf(_g("source control file %s"), $dsc)) ||
+        error(_g("%s is empty", $dsc));
 
     readallchecksums($dsc_fields, \%checksum, \%size);
 
@@ -437,9 +426,9 @@ if (!is_binaryonly) {
     # the .orig tarballs must be included
     my $include_tarball;
     if (defined($prev_changelog)) {
-	my %cur = parseversion($changelog->{"Version"});
-	my %prev = parseversion($prev_changelog->{"Version"});
-	$include_tarball = ($cur{"version"} ne $prev{"version"}) ? 1 : 0;
+	my $cur = Dpkg::Version->new($changelog->{"Version"});
+	my $prev = Dpkg::Version->new($prev_changelog->{"Version"});
+	$include_tarball = ($cur->version() ne $prev->version()) ? 1 : 0;
     } else {
 	if ($bad_parser) {
 	    # The parser doesn't support extracting a previous version
@@ -453,9 +442,10 @@ if (!is_binaryonly) {
 
     if ((($sourcestyle =~ m/i/ && not($include_tarball)) ||
 	 $sourcestyle =~ m/d/) &&
-	grep(m/\.(debian\.tar|diff)\.$comp_regex$/,@sourcefiles)) {
+	grep(m/\.(debian\.tar|diff)\.$comp_regex$/,@sourcefiles))
+    {
 	$origsrcmsg= _g("not including original source code in upload");
-	@sourcefiles= grep(!m/\.orig\.tar\.$comp_regex$/,@sourcefiles);
+	@sourcefiles= grep(!m/\.orig(-.+)?\.tar\.$comp_regex$/,@sourcefiles);
     } else {
 	if ($sourcestyle =~ m/d/ &&
 	    !grep(m/\.(debian\.tar|diff)\.$comp_regex$/,@sourcefiles)) {
@@ -468,7 +458,7 @@ if (!is_binaryonly) {
 }
 
 print(STDERR "$progname: $origsrcmsg\n") ||
-    &syserr(_g("write original source message")) unless $quiet;
+    syserr(_g("write original source message")) unless $quiet;
 
 $fields->{'Format'} = $substvars->get("Format");
 
@@ -479,6 +469,8 @@ if (!defined($fields->{'Date'})) {
 }
 
 $fields->{'Binary'} = join(' ', map { $_->{'Package'} } $control->get_packages());
+# Avoid overly long line (>~1000 chars) by splitting over multiple lines
+$fields->{'Binary'} =~ s/(.{980,}?) /$1\n /g;
 
 unshift(@archvalues,'source') unless is_binaryonly;
 @archvalues = ('all') if $include == ARCH_INDEP;
@@ -533,6 +525,5 @@ for my $f (keys %remove) {
     delete $fields->{$f};
 }
 
-tied(%{$fields})->set_field_importance(@changes_fields);
-tied(%{$fields})->output(\*STDOUT); # Note: no substitution of variables
+$fields->output(\*STDOUT); # Note: no substitution of variables
 

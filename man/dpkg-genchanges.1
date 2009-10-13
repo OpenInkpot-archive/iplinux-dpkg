@@ -1,4 +1,4 @@
-.TH dpkg\-genchanges 1 "2007-07-18" "Debian Project" "dpkg utilities"
+.TH dpkg\-genchanges 1 "2008-08-18" "Debian Project" "dpkg utilities"
 .SH NAME
 dpkg\-genchanges \- generate Debian .changes files
 .
@@ -16,10 +16,10 @@ file
 .
 .SH OPTIONS
 .TP
-.BR \-b ", " \-B
+.BR \-b ", " \-B ", " \-A
 Specifies that a binary-only build is taking place (no source files are
-to be included). There's no distinction between \fB\-b\fP and \fB\-B\fP,
-the produced
+to be included). There's no distinction between \fB\-b\fP, \fB\-B\fP and
+\fB\-A\fP, the produced
 .B .changes
 file will include whatever files were created by the
 .B binary\-*
@@ -144,9 +144,9 @@ reads the data here when producing a
 file.
 .
 .SH AUTHORS
-Copyright (C) 1995-1996 Ian Jackson
+Copyright \(co 1995-1996 Ian Jackson
 .br
-Copyright (C) 2000 Wichert Akkerman
+Copyright \(co 2000 Wichert Akkerman
 .sp
 This is free software; see the GNU General Public Licence version 2 or later
 for copying conditions. There is NO WARRANTY.

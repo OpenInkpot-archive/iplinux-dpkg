@@ -8,7 +8,7 @@ use POSIX;
 use POSIX qw(:errno_h);
 use Dpkg;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(warning error syserr subprocerr usageerr);
+use Dpkg::ErrorHandling;
 use Dpkg::Changelog qw(parse_changelog);
 
 textdomain("dpkg-dev");
@@ -43,16 +43,18 @@ parser options:
     --format <outputformat>     see man page for list of available
                                 output formats, defaults to 'dpkg'
                                 for compatibility with dpkg-dev
-    --since, -s, -v <version>   include all changes later than version
-    --until, -u <version>       include all changes earlier than version
-    --from, -f <version>        include all changes equal or later
+    --since <version>,          include all changes later than version
+      -s<version>, -v<version>
+    --until <version>,          include all changes earlier than version
+      -u<version>
+    --from <version>,           include all changes equal or later
+      -f<version>               than version
+    --to <version>, -t<version> include all changes up to or equal
                                 than version
-    --to, -t <version>          include all changes up to or equal
-                                than version
-    --count, -c, -n <number>    include <number> entries from the top
-                                (or the tail if <number> is lower than 0)
-    --offset, -o <number>       change the starting point for --count,
-                                counted from the top (or the tail if
+    --count <number>,           include <number> entries from the top
+      -c<number>, -n<number>    (or the tail if <number> is lower than 0)
+    --offset <number>,          change the starting point for --count,
+      -o<number>                counted from the top (or the tail if
                                 <number> is lower than 0)
     --all                       include all changes
 "), $progname;
@@ -106,6 +108,6 @@ my $count = 0;
 my @fields = parse_changelog(%options);
 foreach my $f (@fields) {
     print "\n" if $count++;
-    print tied(%$f)->dump();
+    print $f->output();
 }
 

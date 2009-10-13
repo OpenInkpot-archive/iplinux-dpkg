@@ -1,8 +1,8 @@
 #
 # Dpkg::Changelog::Debian
 #
-# Copyright 1996 Ian Jackson
-# Copyright 2005 Frank Lichtenheld <frank@lichtenheld.de>
+# Copyright © 1996 Ian Jackson
+# Copyright © 2005 Frank Lichtenheld <frank@lichtenheld.de>
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -128,11 +128,11 @@ sub parse {
 # based on /usr/lib/dpkg/parsechangelog/debian
     my $expect='first heading';
     my $entry = new Dpkg::Changelog::Entry;
-    my $blanklines = 0;
+    my @blanklines = ();
     my $unknowncounter = 1; # to make version unique, e.g. for using as id
 
     while (<$fh>) {
-	s/\s*\n$//;
+	chomp;
 #	printf(STDERR "%-39.39s %-39.39s\n",$expect,$_);
 	my $name_chars = qr/[-+0-9a-z.]/i;
 	if (m/^(\w$name_chars*) \(([^\(\) \t]+)\)((\s+$name_chars+)+)\;/i) {
@@ -144,7 +144,7 @@ sub parse {
 		$self->_do_parse_error(@{$entry->{ERROR}});
 	    }
 	    unless ($entry->is_empty) {
-		$entry->{'Closes'} = find_closes( $entry->{Changes} );
+		$entry->{'Closes'} = find_closes(join("\n", @{$entry->{Changes}}));
 #		    print STDERR, Dumper($entry);
 		push @{$self->{data}}, $entry;
 		$entry = new Dpkg::Changelog::Entry;
@@ -155,7 +155,11 @@ sub parse {
 		$entry->{'Version'} = "$2";
 		$entry->{'Header'} = "$_";
 		($entry->{'Distribution'} = "$3") =~ s/^\s+//;
-		$entry->{'Changes'} = $entry->{'Urgency_comment'} = '';
+		$entry->{'Changes'} = [];
+		$entry->{'BlankAfterHeader'} = [];
+		$entry->{'BlankAfterChanges'} = [];
+		$entry->{'BlankAfterTrailer'} = [];
+		$entry->{'Urgency_comment'} = '';
 		$entry->{'Urgency'} = $entry->{'Urgency_lc'} = 'unknown';
 	    }
 	    (my $rhs = $POSTMATCH) =~ s/^\s+//;
@@ -188,7 +192,7 @@ sub parse {
 		}
 	    }
 	    $expect= 'start of change data';
-	    $blanklines = 0;
+	    @blanklines = ();
 	} elsif (m/^(;;\s*)?Local variables:/io) {
 	    last; # skip Emacs variables at end of file
 	} elsif (m/^vim:/io) {
@@ -204,9 +208,9 @@ sub parse {
 		 || m/^(\w[-+0-9a-z.]*) \(([^\(\) \t]+)\)\;?/io
 		 || m/^([\w.+-]+)(-| )(\S+) Debian (\S+)/io
 		 || m/^Changes from version (.*) to (.*):/io
-		 || m/^Changes for [\w.+-]+-[\w.+-]+:?$/io
-		 || m/^Old Changelog:$/io
-		 || m/^(?:\d+:)?\w[\w.+~-]*:?$/o) {
+		 || m/^Changes for [\w.+-]+-[\w.+-]+:?\s*$/io
+		 || m/^Old Changelog:\s*$/io
+		 || m/^(?:\d+:)?\w[\w.+~-]*:?\s*$/o) {
 	    # save entries on old changelog format verbatim
 	    # we assume the rest of the file will be in old format once we
 	    # hit it for the first time
@@ -215,7 +219,7 @@ sub parse {
 	} elsif (m/^\S/) {
 	    $self->_do_parse_error($file, $NR,
 				  _g("badly formatted heading line"), "$_");
-	} elsif (m/^ \-\- (.*) <(.*)>(  ?)((\w+\,\s*)?\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d\d:\d\d\s+[-+]\d{4}(\s+\([^\\\(\)]\))?)$/o) {
+	} elsif (m/^ \-\- (.*) <(.*)>(  ?)((\w+\,\s*)?\d{1,2}\s+\w+\s+\d{4}\s+\d{1,2}:\d\d:\d\d\s+[-+]\d{4}(\s+\([^\\\(\)]\))?)\s*$/o) {
 	    $expect eq 'more change data or trailer' ||
 		$self->_do_parse_error($file, $NR,
 				       sprintf(_g("found trailer where expected %s"),
@@ -225,6 +229,8 @@ sub parse {
 				       _g( "badly formatted trailer line" ),
 				       "$_");
 	    }
+	    push @{$entry->{BlankAfterChanges}}, @blanklines;
+	    @blanklines = ();
 	    $entry->{'Trailer'} = $_;
 	    $entry->{'Maintainer'} = "$1 <$2>" unless $entry->{'Maintainer'};
 	    unless($entry->{'Date'} && defined $entry->{'Timestamp'}) {
@@ -253,7 +259,7 @@ sub parse {
 		    if (($expect eq 'next heading or eof')
 			&& !$entry->is_empty) {
 			# lets assume we have missed the actual header line
-			$entry->{'Closes'} = find_closes( $entry->{Changes} );
+			$entry->{'Closes'} = find_closes(join("\n", @{$entry->{Changes}}));
 #		    print STDERR, Dumper($entry);
 			push @{$self->{data}}, $entry;
 			$entry = new Dpkg::Changelog::Entry;
@@ -267,23 +273,30 @@ sub parse {
 						    $expect), "$_" ];
 		    }
 		};
-	    $entry->{'Changes'} .= (" \n" x $blanklines)." $_\n";
+	    # Keep raw changes
+	    push @{$entry->{'Changes'}}, @blanklines, $_;
 	    if (!$entry->{'Items'} || ($1 eq '*')) {
 		$entry->{'Items'} ||= [];
 		push @{$entry->{'Items'}}, "$_\n";
 	    } else {
-		$entry->{'Items'}[-1] .= (" \n" x $blanklines)." $_\n";
+		my $blank = '';
+		$blank = join("\n", @blanklines) . "\n" if scalar @blanklines;
+		$entry->{'Items'}[-1] .= "$blank$_\n";
 	    }
-	    $blanklines = 0;
+	    @blanklines = ();
 	    $expect = 'more change data or trailer';
 	} elsif (!m/\S/) {
-	    next if $expect eq 'start of change data'
-		|| $expect eq 'next heading or eof';
-	    $expect eq 'more change data or trailer'
-		|| $self->_do_parse_error($file, $NR,
-					  sprintf(_g("found blank line where expected %s"),
-						  $expect));
-	    $blanklines++;
+	    if ($expect eq 'start of change data') {
+		push @{$entry->{BlankAfterHeader}}, $_;
+		next;
+	    } elsif ($expect eq 'next heading or eof') {
+		push @{$entry->{BlankAfterTrailer}}, $_;
+		next;
+	    } elsif ($expect ne 'more change data or trailer') {
+		$self->_do_parse_error($file, $NR,
+		      sprintf(_g("found blank line where expected %s"), $expect));
+	    }
+	    push @blanklines, $_;
 	} else {
 	    $self->_do_parse_error($file, $NR, _g( "unrecognised line" ),
 				   "$_");
@@ -291,14 +304,17 @@ sub parse {
 		|| $expect eq 'more change data or trailer')
 		&& do {
 		    # lets assume change data if we expected it
-		    $entry->{'Changes'} .= (" \n" x $blanklines)." $_\n";
+		    push @{$entry->{'Changes'}}, @blanklines, $_;
 		    if (!$entry->{'Items'}) {
 			$entry->{'Items'} ||= [];
 			push @{$entry->{'Items'}}, "$_\n";
 		    } else {
-			$entry->{'Items'}[-1] .= (" \n" x $blanklines)." $_\n";
+			my $blank = '';
+			$blank = join("\n", @blanklines) . "\n"
+				if scalar @blanklines;
+			$entry->{'Items'}[-1] .= "$blank$_\n";
 		    }
-		    $blanklines = 0;
+		    @blanklines = ();
 		    $expect = 'more change data or trailer';
 		    $entry->{ERROR} = [ $file, $NR, _g( "unrecognised line" ),
 					"$_" ];
@@ -314,7 +330,7 @@ sub parse {
 	    $self->_do_parse_error( @{$entry->{ERROR}} );
 	};
     unless ($entry->is_empty) {
-	$entry->{'Closes'} = find_closes( $entry->{Changes} );
+	$entry->{'Closes'} = find_closes(join("\n", @{$entry->{Changes}}));
 	push @{$self->{data}}, $entry;
     }
 
@@ -327,7 +343,7 @@ sub parse {
     }
 
 #    use Data::Dumper;
-#    print Dumper( $self );
+#    print STDERR Dumper( $self );
 
     return $self;
 }

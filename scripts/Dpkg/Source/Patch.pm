@@ -1,4 +1,4 @@
-# Copyright 2008 Raphaël Hertzog <hertzog@debian.org>
+# Copyright © 2008 Raphaël Hertzog <hertzog@debian.org>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ use Dpkg::Source::Compressor;
 use Dpkg::Compression;
 use Dpkg::Gettext;
 use Dpkg::IPC;
-use Dpkg::ErrorHandling qw(error errormsg syserr warning subprocerr internerr);
+use Dpkg::ErrorHandling;
 
 use POSIX;
 use File::Find;
@@ -111,8 +111,7 @@ sub add_diff_file {
                        "original or modified version)"), $new);
         } else {
             chomp;
-            internerr(_g("unknown line from diff -u on %s: `%s'"),
-                      $new, $_);
+            error(_g("unknown line from diff -u on %s: `%s'"), $new, $_);
         }
         print({ $self->{'handle'} } $_) || syserr(_g("failed to write"));
     }

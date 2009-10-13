@@ -5,16 +5,14 @@ if WITH_DSELECT
 endif
 
 SUBDIRS = \
-	libcompat \
 	lib \
-	src \
-	$(MAYBE_DSELECT) \
 	dpkg-deb \
 	dpkg-split \
+	src \
 	utils \
+	$(MAYBE_DSELECT) \
 	scripts \
 	po \
-	origins \
 	man
 
 ACLOCAL_AMFLAGS = -I m4
@@ -23,9 +21,11 @@ ACLOCAL_AMFLAGS = -I m4
 dist_pkgdata_DATA = cputable ostable triplettable
 
 EXTRA_DIST = \
-	README.api \
-	README.feature-removal-schedule \
+	ChangeLog.old \
 	README.translators \
+	doc/README.api \
+	doc/README.feature-removal-schedule \
+	doc/coding-style.txt \
 	doc/triggers.txt \
 	debian/archtable \
 	debian/changelog \
@@ -37,12 +37,14 @@ EXTRA_DIST = \
 	debian/dpkg-dev.preinst \
 	debian/dpkg-dev.lintian-overrides \
 	debian/dpkg.cfg \
+	debian/dpkg.cron.daily \
 	debian/dpkg.docs \
 	debian/dpkg.install \
 	debian/dpkg.postinst \
 	debian/dpkg.postrm \
 	debian/dpkg.preinst \
 	debian/dpkg.logrotate \
+	debian/dpkg.links \
 	debian/dpkg.lintian-overrides \
 	debian/dselect.cfg \
 	debian/dselect.docs \
@@ -54,6 +56,12 @@ EXTRA_DIST = \
 	debian/rules \
 	debian/shlibs.default \
 	debian/shlibs.override
+
+.PHONY: ChangeLog
+DISTCLEANFILES = ChangeLog
+
+ChangeLog:
+	git log -C --stat 1.15.0.. >$@
 
 # If we create the dist tarball from the git repository, make sure
 # that we're not forgetting some files...

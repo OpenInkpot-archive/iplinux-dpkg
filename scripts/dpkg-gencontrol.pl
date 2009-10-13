@@ -7,23 +7,18 @@ use POSIX;
 use POSIX qw(:errno_h);
 use Dpkg;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(warning error failure unknown internerr syserr
-                           subprocerr usageerr);
+use Dpkg::ErrorHandling;
 use Dpkg::Arch qw(get_host_arch debarch_eq debarch_is);
-use Dpkg::Deps qw(@pkg_dep_fields %dep_field_type);
-use Dpkg::Fields qw(:list capit);
+use Dpkg::Deps;
 use Dpkg::Control;
+use Dpkg::Control::Info;
+use Dpkg::Control::Fields;
 use Dpkg::Substvars;
 use Dpkg::Vars;
 use Dpkg::Changelog qw(parse_changelog);
 
 textdomain("dpkg-dev");
 
-my @control_fields = (qw(Package Package-Type Source Version Kernel-Version
-                         Architecture Subarchitecture Installer-Menu-Item
-                         Essential Origin Bugs Maintainer Installed-Size),
-                      @pkg_dep_fields,
-                      qw(Section Priority Homepage Description Tag));
 
 my $controlfile = 'debian/control';
 my $changelogfile = 'debian/changelog';
@@ -112,22 +107,26 @@ while (@ARGV) {
     } elsif (m/^-n/) {
         $forcefilename= $';
     } elsif (m/^-(h|-help)$/) {
-        &usage; exit(0);
+        usage();
+        exit(0);
     } elsif (m/^--version$/) {
-        &version; exit(0);
+        version();
+        exit(0);
     } else {
         usageerr(_g("unknown option \`%s'"), $_);
     }
 }
 
+umask 0022; # ensure sane default permissions for created files
 my %options = (file => $changelogfile);
 $options{"changelogformat"} = $changelogformat if $changelogformat;
 my $changelog = parse_changelog(%options);
 $substvars->set_version_substvars($changelog->{"Version"});
+$substvars->set_arch_substvars();
 $substvars->parse($varlistfile) if -e $varlistfile;
 $substvars->set("binary:Version", $forceversion) if defined $forceversion;
-my $control = Dpkg::Control->new($controlfile);
-my $fields = Dpkg::Fields::Object->new();
+my $control = Dpkg::Control::Info->new($controlfile);
+my $fields = Dpkg::Control->new(type => CTRL_PKG_DEB);
 
 my $pkg;
 
@@ -142,29 +141,20 @@ if (defined($oppackage)) {
     $pkg = $control->get_pkg_by_idx(1);
 }
 
-my %pkg_dep_fields = map { $_ => 1 } @pkg_dep_fields;
-
 # Scan source package
 my $src_fields = $control->get_source();
 foreach $_ (keys %{$src_fields}) {
-    my $v = $src_fields->{$_};
-    if (m/^(Origin|Bugs|Maintainer|Section|Priority|Homepage)$/) {
-	$fields->{$_} = $v;
-    } elsif (m/^Source$/) {
-	set_source_package($v);
-    } elsif (s/^X[CS]*B[CS]*-//i) { # Include XB-* fields
-	$fields->{$_} = $v;
-    } elsif (m/^X[CS]+-/i || m/^$control_src_field_regex$/i) {
-	# Silently ignore valid fields
+    if (m/^Source$/) {
+	set_source_package($src_fields->{$_});
     } else {
-	unknown(_g('general section of control info file'));
+        field_transfer_single($src_fields, $fields);
     }
 }
 
 # Scan binary package
 foreach $_ (keys %{$pkg}) {
     my $v = $pkg->{$_};
-    if (exists($pkg_dep_fields{$_})) {
+    if (field_get_dep_type($_)) {
 	# Delay the parsing until later
     } elsif (m/^Architecture$/) {
 	my $host_arch = get_host_arch();
@@ -185,12 +175,8 @@ foreach $_ (keys %{$pkg}) {
 		      $host_arch, "@archlist");
 	    $fields->{$_} = $host_arch;
 	}
-    } elsif (m/^$control_pkg_field_regex$/) {
-	$fields->{$_} = $v;
-    } elsif (s/^X[CS]*B[CS]*-//i) { # Include XB-* fields
-	$fields->{$_} = $v;
-    } elsif (!m/^X[CS]+-/i) {
-	unknown(_g("package's section of control info file"));
+    } else {
+        field_transfer_single($pkg, $fields);
     }
 }
 
@@ -203,11 +189,11 @@ foreach $_ (keys %{$changelog}) {
     } elsif (m/^Version$/) {
 	$sourceversion = $v;
 	$fields->{$_} = $v unless defined($forceversion);
-    } elsif (m/^(Maintainer|Changes|Urgency|Distribution|Date|Closes)$/) {
-    } elsif (s/^X[CS]*B[CS]*-//i) {
-	$fields->{$_} = $v;
-    } elsif (!m/^X[CS]+-/i) {
-	unknown(_g("parsed version of changelog"));
+    } elsif (m/^Maintainer$/) {
+        # That field must not be copied from changelog even if it's
+        # allowed in the binary package control information
+    } else {
+        field_transfer_single($changelog, $fields);
     }
 }
 
@@ -233,21 +219,23 @@ if (exists $pkg->{"Provides"}) {
 }
 
 my (@seen_deps);
-foreach my $field (@pkg_dep_fields) {
+foreach my $field (field_list_pkg_dep()) {
     if (exists $pkg->{$field}) {
 	my $dep;
 	my $field_value = $substvars->substvars($pkg->{$field});
-	if ($dep_field_type{$field} eq 'normal') {
+	if (field_get_dep_type($field) eq 'normal') {
 	    $dep = Dpkg::Deps::parse($field_value, use_arch => 1,
                                      reduce_arch => 1);
-	    error(_g("error occurred while parsing %s"), $field_value) unless defined $dep;
+	    error(_g("error occurred while parsing %s field: %s"), $field,
+                  $field_value) unless defined $dep;
 	    $dep->simplify_deps($facts, @seen_deps);
 	    # Remember normal deps to simplify even further weaker deps
-	    push @seen_deps, $dep if $dep_field_type{$field} eq 'normal';
+	    push @seen_deps, $dep;
 	} else {
 	    $dep = Dpkg::Deps::parse($field_value, use_arch => 1,
                                      reduce_arch => 1, union => 1);
-	    error(_g("error occurred while parsing %s"), $field_value) unless defined $dep;
+	    error(_g("error occurred while parsing %s field: %s"), $field,
+                  $field_value) unless defined $dep;
 	    $dep->simplify_deps($facts);
             $dep->sort();
 	}
@@ -264,14 +252,14 @@ for my $f (qw(Maintainer Description Architecture)) {
 }
 $oppackage = $fields->{'Package'};
 
-my $package_type = $pkg->{'Package-Type'} ||
-                   tied(%$pkg)->get_custom_field('Package-Type') || 'deb';
+my $pkg_type = $pkg->{'Package-Type'} ||
+               $pkg->get_custom_field('Package-Type') || 'deb';
 
-if ($package_type eq 'udeb') {
+if ($pkg_type eq 'udeb') {
     delete $fields->{'Homepage'};
 } else {
     for my $f (qw(Subarchitecture Kernel-Version Installer-Menu-Item)) {
-        warning(_g("%s package with udeb specific field %s"), $package_type, $f)
+        warning(_g("%s package with udeb specific field %s"), $pkg_type, $f)
             if defined($fields->{$f});
     }
 }
@@ -288,7 +276,7 @@ if (!defined($substvars->get('Installed-Size'))) {
     if (!$c) {
         chdir("$packagebuilddir") ||
             syserr(_g("chdir for du to \`%s'"), $packagebuilddir);
-        exec("du","-k","-s",".") or &syserr(_g("exec du"));
+        exec("du", "-k", "-s", ".") or syserr(_g("exec %s"), "du");
     }
     my $duo = '';
     while (<DU>) {
@@ -297,7 +285,7 @@ if (!defined($substvars->get('Installed-Size'))) {
     close(DU);
     $? && subprocerr(_g("du in \`%s'"), $packagebuilddir);
     $duo =~ m/^(\d+)\s+\.$/ ||
-        failure(_g("du gave unexpected output \`%s'"), $duo);
+        error(_g("du gave unexpected output \`%s'"), $duo);
     $substvars->set('Installed-Size', $1);
 }
 if (defined($substvars->get('Extra-Size'))) {
@@ -307,6 +295,7 @@ if (defined($substvars->get('Extra-Size'))) {
 if (defined($substvars->get('Installed-Size'))) {
     $fields->{'Installed-Size'} = $substvars->get('Installed-Size');
 }
+$substvars->no_warn('Installed-Size');
 
 for my $f (keys %override) {
     $fields->{$f} = $override{$f};
@@ -316,7 +305,7 @@ for my $f (keys %remove) {
 }
 
 $fileslistfile="./$fileslistfile" if $fileslistfile =~ m/^\s/;
-open(Y, ">", "$fileslistfile.new") || &syserr(_g("open new files list file"));
+open(Y, ">", "$fileslistfile.new") || syserr(_g("open new files list file"));
 binmode(Y);
 if (open(X, "<", $fileslistfile)) {
     binmode(X);
@@ -324,26 +313,26 @@ if (open(X, "<", $fileslistfile)) {
         chomp;
         next if m/^([-+0-9a-z.]+)_[^_]+_([\w-]+)\.(a-z+) /
                 && ($1 eq $oppackage)
-	        && ($3 eq $package_type)
-	        && (debarch_eq($2, $fields->{'Architecture'})
+	        && ($3 eq $pkg_type)
+	        && (debarch_eq($2, $fields->{'Architecture'} || "")
 		    || debarch_eq($2, 'all'));
-        print(Y "$_\n") || &syserr(_g("copy old entry to new files list file"));
+        print(Y "$_\n") || syserr(_g("copy old entry to new files list file"));
     }
-    close(X) || &syserr(_g("close old files list file"));
+    close(X) || syserr(_g("close old files list file"));
 } elsif ($! != ENOENT) {
-    &syserr(_g("read old files list file"));
+    syserr(_g("read old files list file"));
 }
 my $sversion = $fields->{'Version'};
 $sversion =~ s/^\d+://;
-$forcefilename = sprintf("%s_%s_%s.%s", $oppackage, $sversion, $fields->{'Architecture'},
-			 $package_type)
+$forcefilename = sprintf("%s_%s_%s.%s", $oppackage, $sversion,
+                         $fields->{'Architecture'} || "", $pkg_type)
 	   unless ($forcefilename);
 print(Y $substvars->substvars(sprintf("%s %s %s\n", $forcefilename,
 				      $fields->{'Section'} || '-',
 				      $fields->{'Priority'} || '-')))
-    || &syserr(_g("write new entry to new files list file"));
-close(Y) || &syserr(_g("close new files list file"));
-rename("$fileslistfile.new",$fileslistfile) || &syserr(_g("install new files list file"));
+    || syserr(_g("write new entry to new files list file"));
+close(Y) || syserr(_g("close new files list file"));
+rename("$fileslistfile.new", $fileslistfile) || syserr(_g("install new files list file"));
 
 my $cf;
 my $fh_output;
@@ -356,8 +345,8 @@ if (!$stdout) {
     $fh_output = \*STDOUT;
 }
 
-tied(%{$fields})->set_field_importance(@control_fields);
-tied(%{$fields})->output($fh_output, $substvars);
+$fields->apply_substvars($substvars);
+$fields->output($fh_output);
 
 if (!$stdout) {
     close($fh_output);
@@ -365,4 +354,5 @@ if (!$stdout) {
         syserr(_g("cannot install output control file \`%s'"), $cf);
 }
 
+$substvars->warn_about_unused();
 

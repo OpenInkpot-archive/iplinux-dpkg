@@ -5,14 +5,14 @@ use warnings;
 
 use Cwd;
 use File::Basename;
+use POSIX;
 
 use Dpkg;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(warning error failure syserr subprocerr usageerr
-                           $warnable_error);
+use Dpkg::ErrorHandling;
 use Dpkg::BuildOptions;
 use Dpkg::Compression;
-use Dpkg::Version qw(check_version);
+use Dpkg::Version;
 use Dpkg::Changelog qw(parse_changelog);
 use Dpkg::Arch qw(get_build_arch debarch_to_gnutriplet);
 
@@ -43,6 +43,8 @@ Options:
   -p<sign-command>
   -d             do not check build dependencies and conflicts.
   -D             check build dependencies and conflicts.
+  -T<target>     call debian/rules <target> with the proper environment
+  --as-root      ensure -T calls the target with root rights
   -j[<number>]   specify jobs to run simultaneously } passed to debian/rules
   -k<keyid>      the key to use for signing.
   -sgpg          the sign-command is called like GPG.
@@ -69,8 +71,6 @@ Options:
   -nc            do not clean source tree (implies -b).
   -tc            clean source tree when finished.
   -ap            add pause before starting signature process.
-  -E             turn certain warnings into errors.       } passed to
-  -W             when -E is turned on, -W turns it off.   } dpkg-source
   -i[<regex>]    ignore diffs of files matching regex.    } only passed
   -I[<pattern>]  filter out files when building tarballs. } to dpkg-source
   --admindir=<directory>
@@ -102,6 +102,8 @@ my $signchanges = 1;
 my $diffignore = '';
 my $binarytarget = 'binary';
 my $targetarch = my $targetgnusystem = '';
+my $call_target = '';
+my $call_target_as_root = 0;
 
 while (@ARGV) {
     $_ = shift @ARGV;
@@ -112,6 +114,8 @@ while (@ARGV) {
     } elsif (/^--version$/) {
 	showversion;
 	exit 0;
+    } elsif (/^--admindir$/) {
+        $admindir = shift @ARGV;
     } elsif (/^--admindir=(.*)$/) {
 	$admindir = $1;
     } elsif (/^-j(\d*)$/) {
@@ -149,41 +153,29 @@ while (@ARGV) {
 	$cleansource = 1;
     } elsif (/^-t(.*)$/) {
 	$targetgnusystem = $1; # Order DOES matter!
+    } elsif (/^(--target|-T)$/) {
+        $call_target = shift @ARGV;
+    } elsif (/^(--target=|-T)(.+)$/) {
+        $call_target = $2;
+    } elsif (/^--as-root$/) {
+        $call_target_as_root = 1;
     } elsif (/^-nc$/) {
 	$noclean = 1;
-	if ($sourceonly) {
-	    usageerr(_g("cannot combine %s and %s"), '-nc', '-S');
-	}
-	unless ($binaryonly) {
-	    $binaryonly = '-b';
-	}
     } elsif (/^-b$/) {
 	$binaryonly = '-b';
 	@checkbuilddep_args = ();
 	$binarytarget = 'binary';
-	if ($sourceonly) {
-	    usageerr(_g("cannot combine %s and %s"), '-b', '-S');
-	}
     } elsif (/^-B$/) {
 	$binaryonly = '-B';
 	@checkbuilddep_args = ('-B');
 	$binarytarget = 'binary-arch';
-	if ($sourceonly) {
-	    usageerr(_g("cannot combine %s and %s"), '-B', '-S');
-	}
     } elsif (/^-A$/) {
 	$binaryonly = '-A';
 	@checkbuilddep_args = ();
 	$binarytarget = 'binary-indep';
-	if ($sourceonly) {
-	    usageerr(_g("cannot combine %s and %s"), '-A', '-S');
-	}
     } elsif (/^-S$/) {
 	$sourceonly = '-S';
 	@checkbuilddep_args = ('-B');
-	if ($binaryonly) {
-	    usageerr(_g("cannot combine %s and %s"), $binaryonly, '-S');
-	}
     } elsif (/^-v(.*)$/) {
 	$since = $1;
     } elsif (/^-m(.*)$/) {
@@ -192,17 +184,22 @@ while (@ARGV) {
 	$changedby = $1;
     } elsif (/^-C(.*)$/) {
 	$desc = $1;
-    } elsif (/^-W$/) {
-	$warnable_error = 1;
-	push @passopts, '-W';
-    } elsif (/^-E$/) {
-	$warnable_error = 0;
-	push @passopts, '-E';
+    } elsif (m/^-[EW]$/) {
+	# Deprecated option
+	warning(_g("-E and -W are deprecated, they are without effect"));
     } elsif (/^-R(.*)$/) {
 	@debian_rules = split /\s+/, $1;
     } else {
 	usageerr(_g("unknown option or argument %s"), $_);
     }
+}
+
+if ($binaryonly and $sourceonly) {
+    usageerr(_g("cannot combine %s and %s"), $binaryonly, $sourceonly);
+}
+if ($noclean) {
+    # -nc without -b/-B/-A/-S implies -b
+    $binaryonly = '-b' unless ($binaryonly or $sourceonly);
 }
 
 if ($< == 0) {
@@ -285,7 +282,8 @@ my $changelog = parse_changelog();
 
 my $pkg = mustsetvar($changelog->{source}, _g('source package'));
 my $version = mustsetvar($changelog->{version}, _g('source version'));
-check_version($version);
+my ($ok, $error) = version_check($version);
+error($error) unless $ok;
 
 my $maintainer;
 if ($changedby) {
@@ -326,10 +324,17 @@ unless ($sourceonly) {
     $arch = 'source';
 }
 
+# Preparation of environment stops here
+
 (my $sversion = $version) =~ s/^\d+://;
 
 my $pv = "${pkg}_$sversion";
 my $pva = "${pkg}_${sversion}_$arch";
+
+if (not -x "debian/rules") {
+    warning(_g("debian/rules is not executable: fixing that."));
+    chmod(0755, "debian/rules"); # No checks of failures, non fatal
+}
 
 if ($checkbuilddep) {
     if ($admindir) {
@@ -339,7 +344,10 @@ if ($checkbuilddep) {
         push @checkbuilddep_args, "--arch=$targetarch";
     }
 
-    if (system('dpkg-checkbuilddeps', @checkbuilddep_args)) {
+    system('dpkg-checkbuilddeps', @checkbuilddep_args);
+    if (not WIFEXITED($?)) {
+        subprocerr('dpkg-checkbuilddeps');
+    } elsif (WEXITSTATUS($?)) {
 	warning(_g("Build dependencies/conflicts unsatisfied; aborting."));
 	warning(_g("(Use -d flag to override.)"));
 
@@ -352,16 +360,30 @@ if ($checkbuilddep) {
     }
 }
 
+if ($call_target) {
+    if ($call_target_as_root or
+        $call_target =~ /^(clean|binary(|-arch|-indep))$/)
+    {
+        withecho(@rootcommand, @debian_rules, $call_target);
+    } else {
+        withecho(@debian_rules, $call_target);
+    }
+    exit 0;
+}
+
 unless ($noclean) {
     withecho(@rootcommand, @debian_rules, 'clean');
 }
 unless ($binaryonly) {
-    chdir('..') or failure('chdir ..');
+    warning(_g("it is a bad idea to generate a source package " .
+               "without cleaning up first, it might contain undesired " .
+               "files.")) if $noclean;
+    chdir('..') or syserr('chdir ..');
     my @opts = @passopts;
     if ($diffignore) { push @opts, $diffignore }
     push @opts, @tarignore;
     withecho('dpkg-source', @opts, '-b', $dir);
-    chdir($dir) or failure("chdir $dir");
+    chdir($dir) or syserr("chdir $dir");
 }
 unless ($sourceonly) {
     withecho(@debian_rules, 'build');
@@ -387,10 +409,10 @@ if ($binaryonly) { push @change_opts, $binaryonly }
 if ($sourceonly) { push @change_opts, $sourceonly }
 if ($sourcestyle) { push @change_opts, $sourcestyle }
 
-if ($maint) { push @change_opts, "-m$maint" }
-if ($changedby) { push @change_opts, "-e$changedby" }
-if ($since) { push @change_opts, "-v$since" }
-if ($desc) { push @change_opts, "-C$desc" }
+if (defined($maint)) { push @change_opts, "-m$maint" }
+if (defined($changedby)) { push @change_opts, "-e$changedby" }
+if (defined($since)) { push @change_opts, "-v$since" }
+if (defined($desc)) { push @change_opts, "-C$desc" }
 
 my $chg = "../$pva.changes";
 print STDERR " dpkg-genchanges @change_opts >$chg\n";

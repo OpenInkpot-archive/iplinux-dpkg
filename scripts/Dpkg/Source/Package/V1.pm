@@ -1,4 +1,4 @@
-# Copyright 2008 Raphaël Hertzog <hertzog@debian.org>
+# Copyright © 2008 Raphaël Hertzog <hertzog@debian.org>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,11 +23,10 @@ use base 'Dpkg::Source::Package';
 
 use Dpkg;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(error syserr warning usageerr subprocerr info);
+use Dpkg::ErrorHandling;
 use Dpkg::Compression;
 use Dpkg::Source::Archive;
 use Dpkg::Source::Patch;
-use Dpkg::Version qw(check_version);
 use Dpkg::Exit;
 use Dpkg::Source::Functions qw(erasedir);
 use Dpkg::Source::Package::V3::native;
@@ -44,6 +43,7 @@ sub init_options {
     # Don't call $self->SUPER::init_options() on purpose, V1.0 has no
     # ignore by default
     $self->{'options'}{'sourcestyle'} ||= 'X';
+    $self->{'options'}{'skip_debianization'} ||= 0;
 }
 
 sub parse_cmdline_option {
@@ -54,6 +54,9 @@ sub parse_cmdline_option {
                 $o->{'sourcestyle'}) if $o->{'sourcestyle'} ne 'X';
         $o->{'sourcestyle'} = $1;
         $o->{'copy_orig_tarballs'} = 0 if $1 eq 'n'; # Extract option -sn
+        return 1;
+    } elsif ($opt =~ m/^--skip-debianization$/) {
+        $o->{'skip_debianization'} = 1;
         return 1;
     }
     return 0;
@@ -70,8 +73,6 @@ sub do_extract {
 	         $sourcestyle);
 
     my $dscdir = $self->{'basedir'};
-
-    check_version($fields->{'Version'});
 
     my $basename = $self->get_basename();
     my $basenamerev = $self->get_basename(1);
@@ -135,7 +136,7 @@ sub do_extract {
         }
     }
 
-    if ($difffile) {
+    if ($difffile and not $self->{'options'}{'skip_debianization'}) {
         my $patch = "$dscdir$difffile";
 	info(_g("applying %s"), $difffile);
 	my $patch_obj = Dpkg::Source::Patch->new(filename => $patch);
@@ -212,7 +213,8 @@ sub do_build {
                           $sourcestyle);
                 }
             } else {
-                error("orig argument $origarg is not a plain file or directory");
+                error(_g("orig argument %s is not a plain file or directory"),
+                      $origarg);
             }
         } else {
             $sourcestyle =~ y/aA/nn/;

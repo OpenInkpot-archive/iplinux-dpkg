@@ -2,7 +2,8 @@
  * dpkg - main program for package management
  * main.c - main program
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2006-2009 Guillem Jover <guillem@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,7 +20,11 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
 
+#include <dpkg/i18n.h>
+
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -34,34 +39,44 @@
 #include <ctype.h>
 #include <fcntl.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#if HAVE_LOCALE_H
+#include <locale.h>
+#endif
+
+#include <dpkg/macros.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
 
 #include "main.h"
+#include "filesdb.h"
 
-void
-printversion(void)
+static void
+printversion(const struct cmdinfo *ci, const char *value)
 {
-  if (printf(_("Debian `%s' package management program version %s.\n"),
-	     DPKG, DPKG_VERSION_ARCH) < 0) werr("stdout");
-  if (printf(_("This is free software; see the GNU General Public License version 2 or\n"
-	       "later for copying conditions. There is NO warranty.\n"
-	       "See %s --license for copyright and license details.\n"),
-	     DPKG) < 0) werr("stdout");
+  printf(_("Debian `%s' package management program version %s.\n"),
+         DPKG, DPKG_VERSION_ARCH);
+  printf(_(
+"This is free software; see the GNU General Public License version 2 or\n"
+"later for copying conditions. There is NO warranty.\n"
+"See %s --license for copyright and license details.\n"), DPKG);
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
 }
 /*
    options that need fixing:
   dpkg --yet-to-unpack                 \n\
   */
-void
-usage(void)
+static void
+usage(const struct cmdinfo *ci, const char *value)
 {
-  if (fprintf (stdout, _(
+  printf(_(
 "Usage: %s [<option> ...] <command>\n"
-"\n"), DPKG) < 0) werr ("stdout");
+"\n"), DPKG);
 
-  if (fprintf (stdout, _(
+  printf(_(
 "Commands:\n"
 "  -i|--install       <.deb file name> ... | -R|--recursive <directory> ...\n"
 "  --unpack           <.deb file name> ... | -R|--recursive <directory> ...\n"
@@ -87,25 +102,25 @@ usage(void)
 "  --compare-versions <a> <op> <b>  Compare version numbers - see below.\n"
 "  --force-help                     Show help on forcing.\n"
 "  -Dh|--debug=help                 Show help on debugging.\n"
-"\n")) < 0) werr ("stdout");
+"\n"));
 
-  if (fprintf (stdout, _(
+  printf(_(
 "  -h|--help                        Show this help message.\n"
 "  --version                        Show the version.\n"
 "  --license|--licence              Show the copyright licensing terms.\n"
-"\n")) < 0) werr ("stdout");
+"\n"));
 
-  if (fprintf (stdout, _(
+  printf(_(
 "Use dpkg -b|--build|-c|--contents|-e|--control|-I|--info|-f|--field|\n"
 " -x|--extract|-X|--vextract|--fsys-tarfile  on archives (type %s --help).\n"
-"\n"), BACKEND) < 0) werr ("stdout");
+"\n"), BACKEND);
 
-  if (fprintf (stdout, _(
+  printf(_(
 "For internal use: dpkg --assert-support-predepends | --predep-package |\n"
 "  --assert-working-epoch | --assert-long-filenames | --assert-multi-conrep.\n"
-"\n")) < 0) werr ("stdout");
+"\n"));
 
-  if (fprintf (stdout, _(
+  printf(_(
 "Options:\n"
 "  --admindir=<directory>     Use <directory> instead of %s.\n"
 "  --root=<directory>         Install on a different root directory.\n"
@@ -127,18 +142,21 @@ usage(void)
 "  --no-force-...|--refuse-...\n"
 "                             Stop when problems encountered.\n"
 "  --abort-after <n>          Abort after encountering <n> errors.\n"
-"\n"), ADMINDIR) < 0) werr ("stdout");
+"\n"), ADMINDIR);
 
-  if (fprintf (stdout, _(
+  printf(_(
 "Comparison operators for --compare-versions are:\n"
 "  lt le eq ne ge gt       (treat empty version as earlier than any version);\n"
 "  lt-nl le-nl ge-nl gt-nl (treat empty version as later than any version);\n"
 "  < << <= = >= >> >       (only for compatibility with control file syntax).\n"
-"\n")) < 0) werr ("stdout");
+"\n"));
 
-  if (fprintf (stdout, _(
-"Use `dselect' or `aptitude' for user-friendly package management.\n")) < 0)
-  werr ("stdout");
+  printf(_(
+"Use `dselect' or `aptitude' for user-friendly package management.\n"));
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
 }
 
 const char thisname[]= "dpkg";
@@ -169,7 +187,7 @@ int fc_badverify = 0;
 int errabort = 50;
 const char *admindir= ADMINDIR;
 const char *instdir= "";
-struct packageinlist *ignoredependss = NULL;
+struct pkg_list *ignoredependss = NULL;
 
 static const struct forceinfo {
   const char *name;
@@ -195,8 +213,6 @@ static const struct forceinfo {
   { "overwrite-dir",       &fc_overwritedir             },
   { "architecture",        &fc_architecture             },
   { "bad-verify",          &fc_badverify                },
-  /* FIXME: obsolete options, remove in the future. */
-  { "auto-select",         NULL                         },
   {  NULL                                               }
 };
 
@@ -208,14 +224,14 @@ static void setaction(const struct cmdinfo *cip, const char *value) {
 }
 
 static void setobsolete(const struct cmdinfo *cip, const char *value) {
-  fprintf(stderr, _("Warning: obsolete option `--%s'\n"),cip->olong);
+  warning(_("obsolete option '--%s'\n"), cip->olong);
 }
 
 static void setdebug(const struct cmdinfo *cpi, const char *value) {
   char *endp;
 
   if (*value == 'h') {
-    if (printf(_(
+    printf(_(
 "%s debugging option, --debug=<octal> or -D<octal>:\n"
 "\n"
 " number  ref. in source   description\n"
@@ -234,13 +250,13 @@ static void setdebug(const struct cmdinfo *cpi, const char *value) {
 "   2000   stupidlyverbose   Insane amounts of drivel\n"
 "\n"
 "Debugging options are be mixed using bitwise-or.\n"
-"Note that the meanings and values are subject to change.\n"),
-             DPKG) < 0) werr("stdout");
+"Note that the meanings and values are subject to change.\n"), DPKG);
+    m_output(stdout, _("<standard output>"));
     exit(0);
   }
   
   f_debug= strtoul(value,&endp,8);
-  if (*endp) badusage(_("--debug requires an octal argument"));
+  if (value == endp || *endp) badusage(_("--debug requires an octal argument"));
 }
 
 static void setroot(const struct cmdinfo *cip, const char *value) {
@@ -255,14 +271,13 @@ static void setroot(const struct cmdinfo *cip, const char *value) {
 static void ignoredepends(const struct cmdinfo *cip, const char *value) {
   char *copy, *p;
   const char *pnerr;
-  struct packageinlist *ni;
 
   copy= m_malloc(strlen(value)+2);
   strcpy(copy,value);
-  copy[strlen(value)+1]= 0;
+  copy[strlen(value) + 1] = '\0';
   for (p=copy; *p; p++) {
     if (*p != ',') continue;
-    *p++= 0;
+    *p++ = '\0';
     if (!*p || *p==',' || p==copy+1)
       badusage(_("null package name in --ignore-depends comma-separated list `%.250s'"),
                value);
@@ -272,12 +287,13 @@ static void ignoredepends(const struct cmdinfo *cip, const char *value) {
     pnerr = illegal_packagename(p, NULL);
     if (pnerr) ohshite(_("--ignore-depends requires a legal package name. "
                        "`%.250s' is not; %s"), p, pnerr);
-    ni= m_malloc(sizeof(struct packageinlist));
-    ni->pkg= findpackage(p);
-    ni->next= ignoredependss;
-    ignoredependss= ni;
+
+    pkg_list_prepend(&ignoredependss, findpackage(p));
+
     p+= strlen(p)+1;
   }
+
+  free(copy);
 }
 
 static void setinteger(const struct cmdinfo *cip, const char *value) {
@@ -285,31 +301,83 @@ static void setinteger(const struct cmdinfo *cip, const char *value) {
   char *ep;
 
   v= strtoul(value,&ep,0);
-  if (*ep || v > INT_MAX)
+  if (value == ep || *ep || v > INT_MAX)
     badusage(_("invalid integer for --%s: `%.250s'"),cip->olong,value);
   *cip->iassignto= v;
 }
 
 static void setpipe(const struct cmdinfo *cip, const char *value) {
-  static struct pipef **lastpipe;
+  struct pipef **pipe_head = cip->parg;
+  struct pipef *pipe_new;
   unsigned long v;
   char *ep;
 
   v= strtoul(value,&ep,0);
-  if (*ep || v > INT_MAX)
+  if (value == ep || *ep || v > INT_MAX)
     badusage(_("invalid integer for --%s: `%.250s'"),cip->olong,value);
 
   setcloexec(v, _("<package status and progress file descriptor>"));
 
-  lastpipe= cip->parg;
-  if (*lastpipe) {
-    (*lastpipe)->next= nfmalloc(sizeof(struct pipef));
-    *lastpipe= (*lastpipe)->next;
-  } else {
-    *lastpipe= nfmalloc(sizeof(struct pipef));
+  pipe_new = nfmalloc(sizeof(struct pipef));
+  pipe_new->fd = v;
+  pipe_new->next = *pipe_head;
+  *pipe_head = pipe_new;
+}
+
+static bool
+is_invoke_action(enum action action)
+{
+  switch (action) {
+  case act_unpack:
+  case act_configure:
+  case act_install:
+  case act_triggers:
+  case act_remove:
+  case act_purge:
+    return true;
+  default:
+    return false;
   }
-  (*lastpipe)->fd= v;
-  (*lastpipe)->next= NULL;
+}
+
+struct invoke_hook *pre_invoke_hooks = NULL;
+struct invoke_hook **pre_invoke_hooks_tail = &pre_invoke_hooks;
+struct invoke_hook *post_invoke_hooks = NULL;
+struct invoke_hook **post_invoke_hooks_tail = &post_invoke_hooks;
+
+static void
+set_invoke_hook(const struct cmdinfo *cip, const char *value)
+{
+  struct invoke_hook ***hook_tail = cip->parg;
+  struct invoke_hook *hook_new;
+
+  hook_new = nfmalloc(sizeof(struct invoke_hook));
+  hook_new->command = nfstrsave(value);
+  hook_new->next = NULL;
+
+  /* Add the new hook at the tail of the list to preserve the order. */
+  **hook_tail = hook_new;
+  *hook_tail = &hook_new->next;
+}
+
+static void
+run_invoke_hooks(const char *action, struct invoke_hook *hook_head)
+{
+  struct invoke_hook *hook;
+
+  setenv("DPKG_HOOK_ACTION", action, 1);
+
+  for (hook = hook_head; hook; hook = hook->next) {
+    int status;
+
+    /* XXX: As an optimization, use exec instead if no shell metachar are
+     * used “!$=&|\\`'"^~;<>{}[]()?*#”. */
+    status = system(hook->command);
+    if (status != 0)
+      ohshit("error executing hook '%s', exit code %d", hook->command, status);
+  }
+
+  unsetenv("DPKG_HOOK_ACTION");
 }
 
 static void setforce(const struct cmdinfo *cip, const char *value) {
@@ -318,7 +386,7 @@ static void setforce(const struct cmdinfo *cip, const char *value) {
   const struct forceinfo *fip;
 
   if (!strcmp(value,"help")) {
-    if (printf(_(
+    printf(_(
 "%s forcing options - control behaviour when problems found:\n"
 "  warn but continue:  --force-<thing>,<thing>,...\n"
 "  stop with error:    --refuse-<thing>,<thing>,... | --no-force-<thing>,...\n"
@@ -349,8 +417,8 @@ static void setforce(const struct cmdinfo *cip, const char *value) {
 "  remove-essential [!]   Remove an essential package\n"
 "\n"
 "WARNING - use of options marked [!] can seriously damage your installation.\n"
-"Forcing options marked [*] are enabled by default.\n"),
-               DPKG) < 0) werr("stdout");
+"Forcing options marked [*] are enabled by default.\n"), DPKG);
+    m_output(stdout, _("<standard output>"));
     exit(0);
   }
 
@@ -365,22 +433,20 @@ static void setforce(const struct cmdinfo *cip, const char *value) {
 	  if (fip->opt)
 	    *fip->opt= cip->arg;
       } else
-	badusage(_("unknown force/refuse option `%.*s'"), l<250 ? (int)l : 250, value);
+	badusage(_("unknown force/refuse option `%.*s'"),
+	         (int)min(l, 250), value);
     } else {
       if (fip->opt)
 	*fip->opt= cip->arg;
       else
-	fprintf(stderr, _("Warning: obsolete force/refuse option `%s'\n"),
-		fip->name);
+	warning(_("obsolete force/refuse option '%s'\n"), fip->name);
     }
     if (!comma) break;
     value= ++comma;
   }
 }
 
-static const char okpassshortopts[]= "D";
-
-void execbackend(const char *const *argv) NONRETURNING;
+void execbackend(const char *const *argv) DPKG_ATTR_NORET;
 void commandfd(const char *const *argv);
 static const struct cmdinfo cmdinfos[]= {
   /* This table has both the action entries in it and the normal options.
@@ -391,8 +457,8 @@ static const struct cmdinfo cmdinfos[]= {
  { longopt, shortopt, 0, NULL, NULL, setaction, code, NULL, (voidfnp)function }
 #define OBSOLETE(longopt,shortopt) \
  { longopt, shortopt, 0, NULL, NULL, setobsolete, 0, NULL, NULL }
-#define ACTIONBACKEND(longopt,shortop, backend) \
- { longopt, shortop, 0, NULL, NULL, setaction, 0, (void *)backend, (voidfnp)execbackend }
+#define ACTIONBACKEND(longopt, shortopt, backend) \
+ { longopt, shortopt, 0, NULL, NULL, setaction, 0, (void *)backend, (voidfnp)execbackend }
 
   ACTION( "install",                        'i', act_install,              archivefiles    ),
   ACTION( "unpack",                          0,  act_unpack,               archivefiles    ),
@@ -420,13 +486,15 @@ static const struct cmdinfo cmdinfos[]= {
   ACTION( "assert-long-filenames",           0,  act_assertlongfilenames,  assertlongfilenames ),
   ACTION( "assert-multi-conrep",             0,  act_assertmulticonrep,    assertmulticonrep ),
   ACTION( "print-architecture",              0,  act_printarch,            printarch   ),
-  ACTION( "print-installation-architecture", 0,  act_printinstarch,        printarch   ),
+  ACTION( "print-installation-architecture", 0,  act_printinstarch,        printinstarch  ),
   ACTION( "predep-package",                  0,  act_predeppackage,        predeppackage   ),
   ACTION( "compare-versions",                0,  act_cmpversions,          cmpversions     ),
 /*
   ACTION( "command-fd",                   'c', act_commandfd,   commandfd     ),
 */
   
+  { "pre-invoke",        0,   1, NULL,          NULL,      set_invoke_hook, 0, &pre_invoke_hooks_tail },
+  { "post-invoke",       0,   1, NULL,          NULL,      set_invoke_hook, 0, &post_invoke_hooks_tail },
   { "status-fd",         0,   1, NULL,          NULL,      setpipe, 0, &status_pipes },
   { "log",               0,   1, NULL,          &log_file, NULL,    0 },
   { "pending",           'a', 0, &f_pending,    NULL,      NULL,    1 },
@@ -444,8 +512,6 @@ static const struct cmdinfo cmdinfos[]= {
   { "no-also-select",    'N', 0, &f_alsoselect, NULL,      NULL,    0 },
   { "skip-same-version", 'E', 0, &f_skipsame,   NULL,      NULL,    1 },
   { "auto-deconfigure",  'B', 0, &f_autodeconf, NULL,      NULL,    1 },
-  OBSOLETE( "largemem", 0 ),
-  OBSOLETE( "smallmem", 0 ),
   { "root",              0,   1, NULL,          NULL,      setroot,       0 },
   { "abort-after",       0,   1, &errabort,     NULL,      setinteger,    0 },
   { "admindir",          0,   1, NULL,          &admindir, NULL,          0 },
@@ -455,8 +521,8 @@ static const struct cmdinfo cmdinfos[]= {
   { "refuse",            0,   2, NULL,          NULL,      setforce,      0 },
   { "no-force",          0,   2, NULL,          NULL,      setforce,      0 },
   { "debug",             'D', 1, NULL,          NULL,      setdebug,      0 },
-  { "help",              'h', 0, NULL,          NULL,      helponly,      0 },
-  { "version",           0,   0, NULL,          NULL,      versiononly,   0 },
+  { "help",              'h', 0, NULL,          NULL,      usage,         0 },
+  { "version",           0,   0, NULL,          NULL,      printversion,  0 },
   /* UK spelling. */
   { "licence",           0,   0, NULL,          NULL,      showcopyright, 0 },
   /* US spelling. */
@@ -496,7 +562,7 @@ void execbackend(const char *const *argv) {
     pass_admindir = 1;
   }
 
-  nargv = m_malloc(sizeof(char *) * (argc + 2));
+  nargv = m_malloc(sizeof(char *) * (argc + 3));
   nargv[i] = m_strdup(cipaction->parg);
 
   i++, offset++;
@@ -512,6 +578,11 @@ void execbackend(const char *const *argv) {
   strcat(nargv[i], cipaction->olong);
   i++, offset++;
 
+  /* Exlicitely separate arguments from options as any user-supplied
+   * separator got stripped by the option parser */
+  nargv[i] = "--";
+  i++, argc++, offset++;
+
   /* Copy arguments from argv to nargv. */
   for (; i <= argc; i++)
     nargv[i] = m_strdup(argv[i - offset]);
@@ -524,12 +595,13 @@ void execbackend(const char *const *argv) {
 
 void commandfd(const char *const *argv) {
   jmp_buf ejbuf;
-  struct varbuf linevb;
+  struct varbuf linevb = VARBUF_INIT;
   const char * pipein;
   const char **newargs;
   char *ptr, *endptr;
   FILE *in;
-  int c, lno, infd, i, skipchar;
+  unsigned long infd;
+  int c, lno, i, skipchar;
   static void (*actionfunction)(const char *const *argv);
 
   pipein = *argv++;
@@ -537,15 +609,17 @@ void commandfd(const char *const *argv) {
     badusage(_("--command-fd takes one argument, not zero"));
   if (*argv)
     badusage(_("--command-fd only takes one argument"));
-  if ((infd= strtol(pipein, (char **)NULL, 10)) == -1)
-    ohshite(_("invalid number for --command-fd"));
+  errno = 0;
+  infd = strtoul(pipein, &endptr, 10);
+  if (pipein == endptr || *endptr || infd > INT_MAX)
+    ohshite(_("invalid integer for --%s: `%.250s'"), "command-fd", pipein);
   if ((in= fdopen(infd, "r")) == NULL)
-    ohshite(_("couldn't open `%i' for stream"), infd);
+    ohshite(_("couldn't open `%i' for stream"), (int) infd);
 
   if (setjmp(ejbuf)) { /* expect warning about possible clobbering of argv */
     error_unwind(ehflag_bombout); exit(2);
   }
-  varbufinit(&linevb);
+
   for (;;lno= 0) {
     const char **oldargs= NULL;
     int argc= 1, mode= 0;
@@ -568,8 +642,7 @@ void commandfd(const char *const *argv) {
     if (c == EOF) ohshit(_("unexpected eof before end of line %d"),lno);
     if (!argc) continue;
     varbufaddc(&linevb,0);
-printf("line=`%*s'\n",(int)linevb.used,linevb.buf);
-    oldargs= newargs= realloc(oldargs,sizeof(const char *) * (argc + 1));
+    oldargs = newargs = m_realloc(oldargs, sizeof(const char *) * (argc + 1));
     argc= 1;
     ptr= linevb.buf;
     endptr= ptr + linevb.used;
@@ -584,7 +657,7 @@ printf("line=`%*s'\n",(int)linevb.used,linevb.buf);
 	continue;
       } else if (isspace(*ptr)) {
 	if (mode == 1) {
-	  *ptr= 0;
+	  *ptr = '\0';
 	  mode= 0;
 	}
       } else {
@@ -596,7 +669,7 @@ printf("line=`%*s'\n",(int)linevb.used,linevb.buf);
       }
       ptr++;
     }
-    *ptr= 0;
+    *ptr = '\0';
     newargs[argc++] = NULL;
 
 /* We strdup each argument, but never free it, because the error messages
@@ -624,20 +697,34 @@ int main(int argc, const char *const *argv) {
   jmp_buf ejbuf;
   static void (*actionfunction)(const char *const *argv);
 
-  standard_startup(&ejbuf, argc, &argv, DPKG, 1, cmdinfos);
+  setlocale(LC_ALL, "");
+  bindtextdomain(PACKAGE, LOCALEDIR);
+  textdomain(PACKAGE);
+
+  standard_startup(&ejbuf);
+  loadcfgfile(DPKG, cmdinfos);
+  myopt(&argv, cmdinfos);
+
   if (!cipaction) badusage(_("need an action option"));
 
   if (!f_triggers)
     f_triggers = (cipaction->arg == act_triggers && *argv) ? -1 : 1;
 
   setvbuf(stdout, NULL, _IONBF, 0);
+
+  if (is_invoke_action(cipaction->arg))
+    run_invoke_hooks(cipaction->olong, pre_invoke_hooks);
+
   filesdbinit();
 
   actionfunction= (void (*)(const char* const*))cipaction->farg;
 
   actionfunction(argv);
 
-  standard_shutdown(0);
+  standard_shutdown();
+
+  if (is_invoke_action(cipaction->arg))
+    run_invoke_hooks(cipaction->olong, post_invoke_hooks);
 
   return reportbroken_retexitstatus();
 }

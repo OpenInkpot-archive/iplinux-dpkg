@@ -1,44 +1,58 @@
 ## Process this file with automake to produce Makefile.in
 
+PO4A_V = $(PO4A_V_$(V))
+PO4A_V_ = $(PO4A_V_$(AM_DEFAULT_VERBOSITY))
+PO4A_V_0 = @echo "  PO4A   $@";
+
+PO4A_RM_V = $(PO4A_RM_V_$(V))
+PO4A_RM_V_ = $(PO4A_RM_V_$(AM_DEFAULT_VERBOSITY))
+PO4A_RM_V_0 = @echo "  PO4ARM $@";
+
 all-local: all-local-@USE_NLS@
 
 all-local-no:
 all-local-yes: man.stamp
 
+PO4A_COMMON_OPTS = --previous --variable builddir=$(CURDIR)
+PO4A_BUILD_OPTS = $(PO4A_COMMON_OPTS) --no-backups
+PO4A_CLEAN_OPTS = $(PO4A_COMMON_OPTS) --rm-backups --rm-translations
+
 # FIXME: Use a stamp file until po4a supports them internally.
 man.stamp:
-	po4a --no-backups --variable srcdir=$(srcdir) \
-		$(srcdir)/po/po4a.cfg
-	touch $@
+	$(PO4A_V) cd $(srcdir) && \
+	po4a $(PO4A_BUILD_OPTS) po/po4a.cfg
+	$(AM_V_at) touch $@
 
 clean-local: clean-local-@USE_NLS@
 
 clean-local-no:
 clean-local-yes:
-	po4a --rm-backups --rm-translations --variable srcdir=$(srcdir) \
-		$(srcdir)/po/po4a.cfg
-	rm -f man.stamp
+	$(PO4A_RM_V) cd $(srcdir) && \
+	po4a $(PO4A_CLEAN_OPTS) po/po4a.cfg
+	$(AM_V_at) rm -f man.stamp
 
 update-po:
-	cd $(srcdir)/po && \
-		po4a --no-backups --force --variable srcdir=../../man \
-			./po4a.cfg 
+	$(PO4A_V) cd $(srcdir) && \
+	po4a $(PO4A_BUILD_OPTS) --force po/po4a.cfg
 
 # Extract the list of languages from the po4a config file.
-LINGUAS = $(shell sed -ne 's/^.*\[po4a_langs\] \(.*\)$$/\1/p' $(srcdir)/po/po4a.cfg)
+LINGUAS = `sed -ne 's/^.*\[po4a_langs\] \(.*\)$$/\1/p' $(srcdir)/po/po4a.cfg`
 
 install-data-local: install-data-local-@USE_NLS@
 
 install-data-local-no:
 install-data-local-yes:
 	for lang in $(LINGUAS); do \
-		if [ -d $(srcdir)/$$lang ]; then \
-			files=$$(echo $(srcdir)/$$lang/*.[1-9]); \
-			$(MAKE) install-man \
-				mandir="$(mandir)/$$lang" \
-				man_MANS="" \
-				dist_man_MANS="$$files"; \
-		fi \
+		files=""; \
+		for trans in $(dist_man_MANS); do \
+			if [ -f $(srcdir)/$$lang/$$trans ]; then \
+				files="$$files $(srcdir)/$$lang/$$trans"; \
+			fi; \
+		done; \
+		$(MAKE) install-man \
+			mandir="$(mandir)/$$lang" \
+			man_MANS="" \
+			dist_man_MANS="$$files"; \
 	done
 
 uninstall-local: uninstall-local-@USE_NLS@
@@ -46,13 +60,16 @@ uninstall-local: uninstall-local-@USE_NLS@
 uninstall-local-no:
 uninstall-local-yes:
 	for lang in $(LINGUAS); do \
-		if [ -d $(srcdir)/$$lang ]; then \
-			files=$$(echo $(srcdir)/$$lang/*.[1-9]); \
-			$(MAKE) uninstall-man \
-				mandir="$(mandir)/$$lang" \
-				man_MANS="" \
-				dist_man_MANS="$$files"; \
-		fi \
+		files=""; \
+		for trans in $(dist_man_MANS); do \
+			if [ -f $(srcdir)/$$lang/$$trans ]; then \
+				files="$$files $(srcdir)/$$lang/$$trans"; \
+			fi; \
+		done; \
+		$(MAKE) uninstall-man \
+			mandir="$(mandir)/$$lang" \
+			man_MANS="" \
+			dist_man_MANS="$$files"; \
 	done
 
 dist-hook: man.stamp
@@ -65,8 +82,6 @@ dist-hook: man.stamp
 	done
 
 dist_man_MANS = \
-	822-date.1 \
-	cleanup-info.8 \
 	deb-control.5 \
 	deb-version.5 \
 	deb-shlibs.5 \
@@ -75,6 +90,7 @@ dist_man_MANS = \
 	deb-triggers.5 \
 	deb-old.5 \
 	deb-override.5 \
+	deb-extra-override.5 \
 	deb.5 \
 	dpkg-architecture.1 \
 	dpkg-buildpackage.1 \
@@ -95,15 +111,24 @@ dist_man_MANS = \
 	dpkg-split.1 \
 	dpkg-statoverride.8 \
 	dpkg-trigger.1 \
+	dpkg-vendor.1 \
 	dpkg.1 \
 	dpkg.cfg.5 \
-	dselect.1 \
-	dselect.cfg.5 \
-	install-info.8 \
-	start-stop-daemon.8 \
 	update-alternatives.8
 
+if WITH_DSELECT
+dist_man_MANS += \
+	dselect.1 \
+	dselect.cfg.5
+endif
+
+if WITH_START_STOP_DAEMON
+dist_man_MANS += \
+	start-stop-daemon.8
+endif
+
 EXTRA_DIST = \
+	po/ChangeLog.old \
 	po/po4a.cfg \
 	po/dpkg-man.pot
 

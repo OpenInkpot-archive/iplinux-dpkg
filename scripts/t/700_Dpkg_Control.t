@@ -6,12 +6,12 @@ use strict;
 use warnings;
 use IO::String;
 
-use_ok('Dpkg::Control');
+use_ok('Dpkg::Control::Info');
 
 my $srcdir = $ENV{srcdir} || '.';
 $srcdir .= '/t/700_Dpkg_Control';
 
-my $c = Dpkg::Control->new("$srcdir/control-1");
+my $c = Dpkg::Control::Info->new("$srcdir/control-1");
 
 my $io = IO::String->new();
 $c->dump($io);
@@ -54,7 +54,7 @@ is($pkg->{Depends}, 'hello', 'Name of third package');
 
 $pkg = $c->get_pkg_by_idx(2);
 $io = IO::String->new();
-tied(%{$pkg})->dump($io);
+$pkg->output($io);
 
 is(${$io->string_ref()},
 'Package: mypackage2

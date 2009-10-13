@@ -1,4 +1,4 @@
-# Copyright 2008 Raphaël Hertzog <hertzog@debian.org>
+# Copyright © 2008 Raphaël Hertzog <hertzog@debian.org>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,9 +24,10 @@ use base 'Dpkg::Source::Package::V2';
 
 use Dpkg;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(error syserr warning usageerr subprocerr info);
+use Dpkg::ErrorHandling;
 use Dpkg::Source::Patch;
 use Dpkg::IPC;
+use Dpkg::Vendor qw(get_current_vendor);
 
 use POSIX;
 use File::Basename;
@@ -61,9 +62,8 @@ sub get_autopatch_name {
 sub get_series_file {
     my ($self, $dir) = @_;
     my $pd = File::Spec->catdir($dir, "debian", "patches");
-    # TODO: replace "debian" with the current distro name once we have a
-    # way to figure it out
-    foreach (File::Spec->catfile($pd, "debian.series"),
+    my $vendor = lc(get_current_vendor() || "debian");
+    foreach (File::Spec->catfile($pd, "$vendor.series"),
              File::Spec->catfile($pd, "series")) {
         return $_ if -e $_;
     }
@@ -137,36 +137,46 @@ sub apply_patches {
                 syserr(_g("can't create symlink %s"), $dest);
         }
     }
+    my @patches = $self->get_patches($dir, $skip_auto);
+    return unless scalar(@patches);
 
-    # Apply patches
+    # Apply patches
     my $applied = File::Spec->catfile($dir, "debian", "patches", ".dpkg-source-applied");
     open(APPLIED, '>', $applied) || syserr(_g("cannot write %s"), $applied);
     my $now = time();
-    foreach my $patch ($self->get_patches($dir, $skip_auto)) {
+    my $pobj = {};
+    my $panalysis = {};
+    foreach my $patch (@patches) {
         my $path = File::Spec->catfile($dir, "debian", "patches", $patch);
-        my $patch_obj = Dpkg::Source::Patch->new(filename => $path);
-        if (not $self->{'options'}{'without_quilt'}) {
-            info(_g("applying %s with quilt"), $patch) unless $skip_auto;
-            my $analysis = $patch_obj->analyze($dir);
-            foreach my $dir (keys %{$analysis->{'dirtocreate'}}) {
+        $pobj->{$patch} = Dpkg::Source::Patch->new(filename => $path);
+        if ($self->{'options'}{'without_quilt'}) {
+            info(_g("applying %s"), $patch) unless $skip_auto;
+            $pobj->{$patch}->apply($dir, timestamp => $now,
+                    force_timestamp => 1, create_dirs => 1,
+                    add_options => [ '-E' ]);
+            print APPLIED "$patch\n";
+        } else {
+            $panalysis->{$patch} = $pobj->{$patch}->analyze($dir);
+            foreach my $dir (keys %{$panalysis->{$patch}->{'dirtocreate'}}) {
                 eval { mkpath($dir); };
                 syserr(_g("cannot create directory %s"), $dir) if $@;
             }
-            $self->run_quilt($dir, ['push', $patch],
-                             delete_env => ['QUILT_PATCH_OPTS'],
-                             wait_child => 1,
-                             to_file => '/dev/null');
-            foreach my $fn (keys %{$analysis->{'filepatched'}}) {
+        }
+    }
+    if (not $self->{'options'}{'without_quilt'}) {
+        my %opts;
+        $opts{"to_file"} = "/dev/null" if $skip_auto;
+        info(_g("applying all patches with %s"), "quilt push -q " . $patches[-1]) unless $skip_auto;
+        $self->run_quilt($dir, ['push', '-q', $patches[-1]],
+                         delete_env => ['QUILT_PATCH_OPTS'],
+                         wait_child => 1, %opts);
+        foreach my $patch (@patches) {
+            foreach my $fn (keys %{$panalysis->{$patch}->{'filepatched'}}) {
                 utime($now, $now, $fn) || $! == ENOENT ||
                     syserr(_g("cannot change timestamp for %s"), $fn);
             }
-        } else {
-            info(_g("applying %s"), $patch) unless $skip_auto;
-            $patch_obj->apply($dir, timestamp => $now,
-                    force_timestamp => 1, create_dirs => 1,
-                    add_options => [ '-E' ]);
+            print APPLIED "$patch\n";
         }
-        print APPLIED "$patch\n";
     }
     close(APPLIED);
 }
@@ -239,21 +249,32 @@ sub register_autopatch {
                 not $self->{'options'}{'without_quilt'})
             {
                 # Registering the new patch with quilt requires some
-                # trickery: reverse-apply the patch, import it, apply it
-                # again with quilt this time
+                # trickery: reverse-apply the patch, create a new quilt patch,
+                # fold the patch into the quilt-managed one
                 my $patch_obj = Dpkg::Source::Patch->new(filename => $patch);
                 $patch_obj->apply($dir, add_options => ['-R', '-E']);
-                $self->run_quilt($dir, ['import', "$absdir/debian/patches/$auto_patch"],
+                $self->run_quilt($dir, ['new', "$auto_patch"],
                                  wait_child => 1, to_file => '/dev/null');
-                $self->run_quilt($dir, ['push'], wait_child => 1, to_file => '/dev/null');
+                $self->run_quilt($dir, ['fold'],
+                                 from_file => "$absdir/debian/patches/$auto_patch",
+                                 wait_child => 1, to_file => '/dev/null');
             } else {
                 open(SERIES, ">>", $series) || syserr(_g("cannot write %s"), $series);
                 print SERIES "$auto_patch\n";
                 close(SERIES);
             }
-            open(APPLIED, ">>", $applied) || syserr(_g("cannot write %s"), $applied);
-            print APPLIED "$auto_patch\n";
-            close(APPLIED);
+        } else {
+            # If quilt was used, ensure its meta-information are
+            # synchronized with the updated patch
+            if (-d "$dir/.pc" and not $self->{'options'}{'without_quilt'}) {
+                # Some trickery needed: reverse-apply the patch, fold the
+                # new patch into the quilt-managed one
+                my $patch_obj = Dpkg::Source::Patch->new(filename => $patch);
+                $patch_obj->apply($dir, add_options => ['-R', '-E']);
+                $self->run_quilt($dir, ['fold'],
+                                 from_file => "$absdir/debian/patches/$auto_patch",
+                                 wait_child => 1, to_file => '/dev/null');
+            }
         }
     } else {
         # Remove auto_patch from series
@@ -270,6 +291,8 @@ sub register_autopatch {
                                  wait_child => 1, to_file => '/dev/null');
             }
         }
+        # Clean up empty series
+        unlink($series) if not -s $series;
     }
 }
 

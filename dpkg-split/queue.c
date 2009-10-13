@@ -2,7 +2,7 @@
  * dpkg-split - splitting and joining of multipart *.deb archives
  * queue.c - queue management
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -28,6 +28,9 @@
  * all numbers in hex
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,19 +42,24 @@
 #include <dirent.h>
 #include <string.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
+
 #include "dpkg-split.h"
 
 static int decompose_filename(const char *filename, struct partqueue *pq) {
   const char *p;
   char *q;
 
-  if (strspn(filename,"0123456789abcdef") != 32 || filename[32] != '.') return 0;
-  q= nfmalloc(33);
-  memcpy(q,filename,32); q[32]= 0;
+  if (strspn(filename, "0123456789abcdef") != MD5HASHLEN ||
+      filename[MD5HASHLEN] != '.')
+    return 0;
+  q = nfmalloc(MD5HASHLEN + 1);
+  memcpy(q, filename, MD5HASHLEN);
+  q[MD5HASHLEN] = '\0';
   pq->info.md5sum= q;
-  p= filename+33;
+  p = filename + MD5HASHLEN + 1;
   pq->info.maxpartlen= strtol(p,&q,16); if (q==p || *q++ != '.') return 0;
   p=q; pq->info.thispartn= (int)strtol(p,&q,16); if (q==p || *q++ != '.') return 0;
   p=q; pq->info.maxpartn= (int)strtol(p,&q,16); if (q==p || *q) return 0;
@@ -114,7 +122,7 @@ void do_auto(const char *const *argv) {
   if (!read_info(part,partfile,refi)) {
     if (!npquiet)
       printf(_("File `%.250s' is not part of a multipart archive.\n"),partfile);
-    if (fclose(stdout)) werr("stdout");
+    m_output(stdout, _("<standard output>"));
     exit(1);
   }
   fclose(part);
@@ -181,7 +189,7 @@ void do_auto(const char *const *argv) {
 
   }
 
-  if (ferror(stderr)) werr("stderr");
+  m_output(stderr, _("<standard error>"));
 }
 
 void do_queue(const char *const *argv) {
@@ -192,7 +200,8 @@ void do_queue(const char *const *argv) {
   unsigned long bytes;
   unsigned int i;
 
-  if (*argv) badusage(_("--listq does not take any arguments"));
+  if (*argv)
+    badusage(_("--%s takes no arguments"), cipaction->olong);
   scandepot();
 
   head= N_("Junk files left around in the depot directory:\n");
@@ -215,7 +224,7 @@ void do_queue(const char *const *argv) {
     if (!pq->info.md5sum) continue;
     mustgetpartinfo(pq->info.filename,&ti);
     fputs(gettext(head),stdout); head= "";
-    printf(" Package %s: part(s) ",ti.package);
+    printf(_(" Package %s: part(s) "), ti.package);
     bytes= 0;
     for (i=0; i<ti.maxpartn; i++) {
       for (qq= pq;
@@ -233,7 +242,7 @@ void do_queue(const char *const *argv) {
     }
     printf(_("(total %lu bytes)\n"),bytes);
   }
-  if (fclose(stdout)) werr("stdout");
+  m_output(stdout, _("<standard output>"));
 }
 
 enum discardwhich { ds_junk, ds_package, ds_all };
@@ -251,7 +260,8 @@ static void discardsome(enum discardwhich which, const char *package) {
       break;
     case ds_all:
       break;
-    default: internerr("bad discardsome which");
+    default:
+      internerr("unknown discardwhich '%d'", which);
     }
     if (unlink(pq->info.filename))
       ohshite(_("unable to discard `%.250s'"),pq->info.filename);

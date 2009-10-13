@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * enquiry.c - status enquiry and listing options
  *
- * Copyright (C) 1995,1996 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995,1996 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,9 +19,13 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-/* fixme: per-package audit */
+/* FIXME: per-package audit */
 #include <config.h>
+#include <compat.h>
 
+#include <dpkg/i18n.h>
+
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -34,44 +38,30 @@
 #include <sys/termios.h>
 #include <fcntl.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
 
 #include "filesdb.h"
 #include "main.h"
 
-int pkglistqsortcmp(const void *a, const void *b) {
-  const struct pkginfo *pa= *(const struct pkginfo**)a;
-  const struct pkginfo *pb= *(const struct pkginfo**)b;
-  return strcmp(pa->name,pb->name);
-}
-
-static void limiteddescription(struct pkginfo *pkg, int maxl,
-                               const char **pdesc_r, int *l_r) {
-  const char *pdesc, *p;
-  int l;
-  
-  pdesc = pkg->installed.valid ? pkg->installed.description : NULL;
-  if (!pdesc) pdesc= _("(no description available)");
-  p= strchr(pdesc,'\n');
-  if (!p) p= pdesc+strlen(pdesc);
-  l= (p - pdesc > maxl) ? maxl : (int)(p - pdesc);
-  *pdesc_r=pdesc; *l_r=l;
-}
-
 struct badstatinfo {
-  int (*yesno)(struct pkginfo*, const struct badstatinfo *bsi);
+  bool (*yesno)(struct pkginfo *, const struct badstatinfo *bsi);
   int val;
   const char *explanation;
 };
 
-static int bsyn_reinstreq(struct pkginfo *pkg, const struct badstatinfo *bsi) {
-  return pkg->eflag &= eflagf_reinstreq;
+static bool
+bsyn_reinstreq(struct pkginfo *pkg, const struct badstatinfo *bsi)
+{
+  return pkg->eflag &= eflag_reinstreq;
 }
 
-static int bsyn_status(struct pkginfo *pkg, const struct badstatinfo *bsi) {
-  if (pkg->eflag &= eflagf_reinstreq) return 0;
+static bool
+bsyn_status(struct pkginfo *pkg, const struct badstatinfo *bsi)
+{
+  if (pkg->eflag &= eflag_reinstreq)
+    return false;
   return (int)pkg->status == bsi->val;
 }
 
@@ -128,7 +118,8 @@ void audit(const char *const *argv) {
   const struct badstatinfo *bsi;
   int head;
 
-  if (*argv) badusage(_("--audit does not take any arguments"));
+  if (*argv)
+    badusage(_("--%s takes no arguments"), cipaction->olong);
 
   modstatdb_init(admindir,msdbrw_readonly);
 
@@ -146,7 +137,8 @@ void audit(const char *const *argv) {
     iterpkgend(it);
     if (head) putchar('\n');
   }
-  if (ferror(stderr)) werr("stderr");  
+
+  m_output(stdout, _("<standard output>"));
 }
 
 struct sectionentry {
@@ -155,22 +147,25 @@ struct sectionentry {
   int count;
 };
 
-static int yettobeunpacked(struct pkginfo *pkg, const char **thissect) {
-  if (pkg->want != want_install) return 0;
+static bool
+yettobeunpacked(struct pkginfo *pkg, const char **thissect)
+{
+  if (pkg->want != want_install)
+    return false;
 
   switch (pkg->status) {
   case stat_unpacked: case stat_installed: case stat_halfconfigured:
   case stat_triggerspending:
   case stat_triggersawaited:
-    return 0;
+    return false;
   case stat_notinstalled: case stat_halfinstalled: case stat_configfiles:
     if (thissect)
       *thissect= pkg->section && *pkg->section ? pkg->section : _("<unknown>");
-    return 1;
+    return true;
   default:
-    internerr("unknown status checking for unpackedness");
+    internerr("unknown package status '%d'", pkg->status);
   }
-  return 0;
+  return false;
 }
 
 void unpackchk(const char *const *argv) {
@@ -182,7 +177,8 @@ void unpackchk(const char *const *argv) {
   char buf[20];
   int width;
   
-  if (*argv) badusage(_("--yet-to-unpack does not take any arguments"));
+  if (*argv)
+    badusage(_("--%s takes no arguments"), cipaction->olong);
 
   modstatdb_init(admindir,msdbrw_readonly|msdbrw_noavail);
 
@@ -246,23 +242,22 @@ void unpackchk(const char *const *argv) {
     }
     putchar('\n');
   }
-  fflush(stdout);
-  if (ferror(stdout)) werr("stdout");
+
+  m_output(stdout, _("<standard output>"));
 }
 
-static void assertversion(const char *const *argv,
-			struct versionrevision *verrev_buf,
-			const char *reqversion) {
+static void
+assert_version_support(const char *const *argv,
+                       struct versionrevision *version,
+                       const char *feature_name)
+{
   struct pkginfo *pkg;
 
-  if (*argv) badusage(_("--assert-* does not take any arguments"));
+  if (*argv)
+    badusage(_("--%s takes no arguments"), cipaction->olong);
 
   modstatdb_init(admindir,msdbrw_readonly|msdbrw_noavail);
-  if (verrev_buf->epoch == ~0UL) {
-    verrev_buf->epoch= 0;
-    verrev_buf->version= nfstrsave(reqversion);
-    verrev_buf->revision = NULL;
-  }
+
   pkg= findpackage("dpkg");
   switch (pkg->status) {
   case stat_installed:
@@ -270,35 +265,37 @@ static void assertversion(const char *const *argv,
     break;
   case stat_unpacked: case stat_halfconfigured: case stat_halfinstalled:
   case stat_triggersawaited:
-    if (versionsatisfied3(&pkg->configversion,verrev_buf,dvr_laterequal))
+    if (versionsatisfied3(&pkg->configversion, version, dvr_laterequal))
       break;
-    printf(_("Version of dpkg with working epoch support not yet configured.\n"
-           " Please use `dpkg --configure dpkg', and then try again.\n"));
+    printf(_("Version of dpkg with working %s support not yet configured.\n"
+             " Please use 'dpkg --configure dpkg', and then try again.\n"),
+           feature_name);
     exit(1);
   default:
-    printf(_("dpkg not recorded as installed, cannot check for epoch support !\n"));
+    printf(_("dpkg not recorded as installed, cannot check for %s support!\n"),
+           feature_name);
     exit(1);
   }
 }
 
 void assertpredep(const char *const *argv) {
-  static struct versionrevision predepversion = { ~0UL, NULL, NULL };
-  assertversion(argv,&predepversion,"1.1.0");
+  struct versionrevision version = { 0, "1.1.0", NULL };
+  assert_version_support(argv, &version, _("Pre-Depends field"));
 }
 
 void assertepoch(const char *const *argv) {
-  static struct versionrevision epochversion = { ~0UL, NULL, NULL };
-  assertversion(argv,&epochversion,"1.4.0.7");
+  struct versionrevision version = { 0, "1.4.0.7", NULL };
+  assert_version_support(argv, &version, _("epoch"));
 }
 
 void assertlongfilenames(const char *const *argv) {
-  static struct versionrevision epochversion = { ~0UL, NULL, NULL };
-  assertversion(argv,&epochversion,"1.4.1.17");
+  struct versionrevision version = { 0, "1.4.1.17", NULL };
+  assert_version_support(argv, &version, _("long filenames"));
 }
 
 void assertmulticonrep(const char *const *argv) {
-  static struct versionrevision epochversion = { ~0UL, NULL, NULL };
-  assertversion(argv,&epochversion,"1.4.1.19");
+  struct versionrevision version = { 0, "1.4.1.19", NULL };
+  assert_version_support(argv, &version, _("multiple Conflicts and Replaces"));
 }
 
 void predeppackage(const char *const *argv) {
@@ -319,7 +316,8 @@ void predeppackage(const char *const *argv) {
   struct dependency *dep;
   struct deppossi *possi, *provider;
 
-  if (*argv) badusage(_("--predep-package does not take any argument"));
+  if (*argv)
+    badusage(_("--%s takes no arguments"), cipaction->olong);
 
   modstatdb_init(admindir,msdbrw_readonly);
   clear_istobes(); /* We use clientdata->istobe to detect loops */
@@ -386,15 +384,26 @@ void predeppackage(const char *const *argv) {
   } while (dep);
 
   /* OK, we've found it - pkg has no unsatisfied pre-dependencies ! */
-  writerecord(stdout,"<stdout>",pkg,&pkg->available);
-  if (fflush(stdout)) werr("stdout");
+  writerecord(stdout, _("<standard output>"), pkg, &pkg->available);
+
+  m_output(stdout, _("<standard output>"));
 }
 
 void printarch(const char *const *argv) {
-  if (*argv) badusage(_("--print-architecture does not take any argument"));
+  if (*argv)
+    badusage(_("--%s takes no arguments"), cipaction->olong);
 
-  if (printf("%s\n",architecture) == EOF) werr("stdout");
-  if (fflush(stdout)) werr("stdout");
+  printf("%s\n", architecture);
+
+  m_output(stdout, _("<standard output>"));
+}
+
+void
+printinstarch(const char *const *argv)
+{
+  warning(_("obsolete option '--%s', please use '--%s' instead."),
+          "print-installation-architecture", "print-architecture");
+  printarch(argv);
 }
 
 void cmpversions(const char *const *argv) {
@@ -442,23 +451,15 @@ void cmpversions(const char *const *argv) {
 
   if (*argv[0] && strcmp(argv[0],"<unknown>")) {
     emsg= parseversion(&a,argv[0]);
-    if (emsg) {
-      if (printf(_("dpkg: version '%s' has bad syntax: %s\n"), argv[0], emsg) == EOF)
-        werr("stdout");
-      if (fflush(stdout)) werr("stdout");
-      exit(1);
-    }
+    if (emsg)
+      ohshit(_("version '%s' has bad syntax: %s"), argv[0], emsg);
   } else {
     blankversion(&a);
   }
   if (*argv[2] && strcmp(argv[2],"<unknown>")) {
     emsg= parseversion(&b,argv[2]);
-    if (emsg) {
-      if (printf(_("dpkg: version '%s' has bad syntax: %s\n"), argv[2], emsg) == EOF)
-        werr("stdout");
-      if (fflush(stdout)) werr("stdout");
-      exit(1);
-    }
+    if (emsg)
+      ohshit(_("version '%s' has bad syntax: %s"), argv[2], emsg);
   } else {
     blankversion(&b);
   }

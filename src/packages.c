@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * packages.c - common to actions that process packages
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -33,9 +36,10 @@
 #include <string.h>
 #include <assert.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/pkg-list.h>
+#include <dpkg/myopt.h>
 
 #include "filesdb.h"
 #include "main.h"
@@ -45,14 +49,13 @@ static PKGQUEUE_DEF_INIT(queue);
 
 int sincenothing = 0, dependtry = 0;
 
-struct pkginqueue *
+struct pkg_list *
 add_to_some_queue(struct pkginfo *pkg, struct pkgqueue *q)
 {
-  struct pkginqueue *newent;
+  struct pkg_list *newent;
 
-  newent= m_malloc(sizeof(struct pkginqueue));
-  newent->pkg= pkg;
-  newent->next = NULL;
+  newent = pkg_list_new(pkg, NULL);
+
   *q->tail = newent;
   q->tail = &newent->next;
   q->length++;
@@ -60,10 +63,10 @@ add_to_some_queue(struct pkginfo *pkg, struct pkgqueue *q)
   return newent;
 }
 
-struct pkginqueue *
+struct pkg_list *
 remove_from_some_queue(struct pkgqueue *q)
 {
-  struct pkginqueue *removeent = q->head;
+  struct pkg_list *removeent = q->head;
 
   if (!removeent)
     return NULL;
@@ -131,7 +134,7 @@ void packages(const char *const *argv) {
           continue;
         break;
       default:
-        internerr("unknown action for pending");
+        internerr("unknown action '%d'", cipaction->arg);
       }
       add_to_queue(pkg);
     }
@@ -164,9 +167,9 @@ void packages(const char *const *argv) {
 }
 
 void process_queue(void) {
-  struct pkginqueue *removeent, *rundown;
+  struct pkg_list *removeent, *rundown;
   struct pkginfo *volatile pkg;
-  enum action action_todo;
+  volatile enum action action_todo;
   jmp_buf ejbuf;
   enum istobes istobe= itb_normal;
   
@@ -179,7 +182,8 @@ void process_queue(void) {
   case act_triggers:
   case act_configure: case act_install:  istobe= itb_installnew;  break;
   case act_remove: case act_purge:       istobe= itb_remove;      break;
-  default: internerr("unknown action for queue start");
+  default:
+    internerr("unknown action '%d'", cipaction->arg);
   }
   for (rundown = queue.head; rundown; rundown = rundown->next) {
     ensure_package_clientdata(rundown->pkg);
@@ -197,7 +201,7 @@ void process_queue(void) {
                rundown->pkg->name);
         break;
       default:
-        internerr("unknown action in duplicate");
+        internerr("unknown action '%d'", cipaction->arg);
       }
       rundown->pkg = NULL;
    } else {
@@ -259,10 +263,10 @@ void process_queue(void) {
       deferred_remove(pkg);
       break;
     default:
-      internerr("unknown action in queue");
+      internerr("unknown action '%d'", cipaction->arg);
     }
-    if (ferror(stdout)) werr("stdout");
-    if (ferror(stderr)) werr("stderr");
+    m_output(stdout, _("<standard output>"));
+    m_output(stderr, _("<standard error>"));
     set_error_display(NULL, NULL);
     error_unwind(ehflag_normaltidy);
   }
@@ -457,7 +461,7 @@ static void breaks_check_one(struct varbuf *aemsgs, int *ok,
                              struct pkginfo *broken,
                              struct pkginfo *breaker,
                              struct pkginfo *virtbroken) {
-  struct varbuf depmsg;
+  struct varbuf depmsg = VARBUF_INIT;
 
   debug(dbg_depcondetail, "      checking breaker %s virtbroken %s",
         breaker->name, virtbroken ? virtbroken->name : "<none>");
@@ -469,7 +473,6 @@ static void breaks_check_one(struct varbuf *aemsgs, int *ok,
   if (ignore_depends(breaker)) return;
   if (virtbroken && ignore_depends(virtbroken)) return;
 
-  varbufinit(&depmsg);
   varbufdependency(&depmsg, breaks->up);
   varbufaddc(&depmsg, 0);
   varbufprintf(aemsgs, _(" %s (%s) breaks %s and is %s.\n"),
@@ -528,12 +531,11 @@ int breakses_ok(struct pkginfo *pkg, struct varbuf *aemsgs) {
 int dependencies_ok(struct pkginfo *pkg, struct pkginfo *removing,
                     struct varbuf *aemsgs) {
   int ok, matched, found, thisf, interestingwarnings, anycannotfixbytrig;
-  struct varbuf oemsgs;
+  struct varbuf oemsgs = VARBUF_INIT;
   struct dependency *dep;
   struct deppossi *possi, *provider;
   struct pkginfo *possfixbytrig, *canfixbytrig;
 
-  varbufinit(&oemsgs);
   interestingwarnings= 0;
   ok= 2; /* 2=ok, 1=defer, 0=halt */
   debug(dbg_depcon,"checking dependencies of %s (- %s)",
@@ -608,7 +610,7 @@ int dependencies_ok(struct pkginfo *pkg, struct pkginfo *removing,
     case 3:
       break;
     default:
-      internerr("unknown value for found");
+      internerr("unknown value for found '%d'", found);
     }
   }
   if (ok == 0 && (pkg->clientdata && pkg->clientdata->istobe == itb_remove))

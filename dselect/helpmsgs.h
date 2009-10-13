@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * helpmsgs.h - external definitions for the list of help messages
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -21,11 +21,6 @@
 
 #ifndef HELPMSGS_H
 #define HELPMSGS_H
-
-extern "C" {
-#include <config.h>
-#include <dpkg.h>
-}
 
 struct helpmessage {
   const char *title;

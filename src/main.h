@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * main.h - external definitions for this program
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -21,6 +21,8 @@
 
 #ifndef MAIN_H
 #define MAIN_H
+
+#include <dpkg/pkg-list.h>
 
 struct fileinlist; /* these two are defined in filesdb.h */
 struct filenamenode;
@@ -43,30 +45,51 @@ struct perpackagestate {
   int replacingfilesandsaid;
 
   /* Non-NULL iff in trigproc.c:deferred. */
-  struct pkginqueue *trigprocdeferred;
+  struct pkg_list *trigprocdeferred;
 };
 
-struct packageinlist {
-  struct packageinlist *next;
-  struct pkginfo *pkg;
-  void *xinfo;
-};
+enum action {
+	act_unset,
 
-struct pkginqueue {
-  struct pkginqueue *next;
-  struct pkginfo *pkg;
-};
+	act_unpack,
+	act_configure,
+	act_install,
+	act_triggers,
+	act_remove,
+	act_purge,
+	act_commandfd,
 
-enum action { act_unset, act_install, act_unpack, act_avail, act_configure,
-              act_triggers,
-              act_remove, act_purge, act_listpackages, act_avreplace, act_avmerge,
-              act_unpackchk, act_status, act_searchfiles, act_audit, act_listfiles,
-              act_assertpredep, act_printarch, act_predeppackage, act_cmpversions,
-              act_printinstarch, act_compareversions, act_printavail, act_avclear,
-              act_forgetold,
-              act_getselections, act_setselections, act_clearselections,
-              act_assertepoch, act_assertlongfilenames, act_assertmulticonrep,
-	      act_commandfd };
+	act_status,
+	act_listpackages,
+	act_listfiles,
+	act_searchfiles,
+	act_controlpath,
+
+	act_cmpversions,
+
+	act_printarch,
+	act_printinstarch,
+
+	act_assertpredep,
+	act_assertepoch,
+	act_assertlongfilenames,
+	act_assertmulticonrep,
+
+	act_audit,
+	act_unpackchk,
+	act_predeppackage,
+
+	act_getselections,
+	act_setselections,
+	act_clearselections,
+
+	act_avail,
+	act_printavail,
+	act_avclear,
+	act_avreplace,
+	act_avmerge,
+	act_forgetold,
+};
 
 enum conffopt {
   cfof_prompt        =     001,
@@ -77,7 +100,6 @@ enum conffopt {
   cfof_isnew         =   00400,
   cfof_isold         =   01000,
   cfof_userrmd       =   02000,
-  cfom_main          =     007,
   cfo_keep           =   cfof_keep,
   cfo_prompt_keep    =   cfof_keep | cfof_prompt,
   cfo_prompt         =               cfof_prompt,
@@ -87,12 +109,11 @@ enum conffopt {
   cfo_identical      =   cfof_keep
 };
 
-extern int conffoptcells[2][2];
 extern const char *const statusstrings[];
 
 extern const struct cmdinfo *cipaction;
 extern int f_pending, f_recursive, f_alsoselect, f_skipsame, f_noact;
-extern int f_autodeconf, f_largemem, f_nodebsig;
+extern int f_autodeconf, f_nodebsig;
 extern int f_triggers;
 extern unsigned long f_debug;
 extern int fc_downgrade, fc_configureany, fc_hold, fc_removereinstreq, fc_overwrite;
@@ -106,12 +127,13 @@ extern int abort_processing;
 extern int errabort;
 extern const char *admindir;
 extern const char *instdir;
-extern struct packageinlist *ignoredependss;
+extern struct pkg_list *ignoredependss;
 extern const char architecture[];
 
-/* from filesdb.c */
-
-void filesdbinit(void);
+struct invoke_hook {
+	struct invoke_hook *next;
+	const char *command;
+};
 
 /* from archives.c */
 
@@ -141,12 +163,10 @@ void assertmulticonrep(const char *const *argv);
 void predeppackage(const char *const *argv);
 void printarch(const char *const *argv);
 void printinstarch(const char *const *argv);
-void cmpversions(const char *const *argv) NONRETURNING;
+void cmpversions(const char *const *argv) DPKG_ATTR_NORET;
 
-/* Intended for use as a comparison function for qsort when
- * sorting an array of pointers to struct pkginfo:
- */
-int pkglistqsortcmp(const void *a, const void *b);
+void limiteddescription(struct pkginfo *pkg,
+                        int maxl, const char **pdesc_r, int *l_r);
 
 /* from select.c */
 
@@ -171,14 +191,14 @@ void deferred_configure(struct pkginfo *pkg);
 extern int sincenothing, dependtry;
 
 struct pkgqueue {
-  struct pkginqueue *head, **tail;
+  struct pkg_list *head, **tail;
   int length;
 };
 
 #define PKGQUEUE_DEF_INIT(name) struct pkgqueue name = { NULL, &name.head, 0 }
 
-struct pkginqueue *add_to_some_queue(struct pkginfo *pkg, struct pkgqueue *q);
-struct pkginqueue *remove_from_some_queue(struct pkgqueue *q);
+struct pkg_list *add_to_some_queue(struct pkginfo *pkg, struct pkgqueue *q);
+struct pkg_list *remove_from_some_queue(struct pkgqueue *q);
 
 /* from cleanup.c (most of these are declared in archives.h) */
 
@@ -186,38 +206,33 @@ void cu_prermremove(int argc, void **argv);
 
 /* from errors.c */
 
-extern int nerrs;
 void print_error_perpackage(const char *emsg, const char *arg);
-void forcibleerr(int forceflag, const char *format, ...) PRINTFFORMAT(2,3);
+void forcibleerr(int forceflag, const char *format, ...) DPKG_ATTR_PRINTF(2);
 int reportbroken_retexitstatus(void);
-int skip_due_to_hold(struct pkginfo *pkg);
+bool skip_due_to_hold(struct pkginfo *pkg);
 
 /* from help.c */
 
 struct stat;
 
-int ignore_depends(struct pkginfo *pkg);
-int force_breaks(struct deppossi *possi);
-int force_depends(struct deppossi *possi);
-int force_conff_new(struct deppossi *possi);
-int force_conff_miss(struct deppossi *possi);
-int force_conflicts(struct deppossi *possi);
+bool ignore_depends(struct pkginfo *pkg);
+bool force_breaks(struct deppossi *possi);
+bool force_depends(struct deppossi *possi);
+bool force_conff_new(struct deppossi *possi);
+bool force_conff_miss(struct deppossi *possi);
+bool force_conflicts(struct deppossi *possi);
 void oldconffsetflags(const struct conffile *searchconff);
 void ensure_pathname_nonexisting(const char *pathname);
-int chmodsafe_unlink(const char *pathname, const char **failed);
-int chmodsafe_unlink_statted(const char *pathname, const struct stat *stab,
-			     const char **failed);
+int secure_unlink(const char *pathname);
+int secure_unlink_statted(const char *pathname, const struct stat *stab);
 void checkpath(void);
 
-/* NB side effect! This not only computes the appropriate filename
- * to use including thinking about any diversions, but also activates
- * any file triggers. */
 struct filenamenode *namenodetouse(struct filenamenode*, struct pkginfo*);
 
 /* all ...'s are const char*'s ... */
 int maintainer_script_installed(struct pkginfo *pkg, const char *scriptname,
                                 const char *description, ...);
-int maintainer_script_new(const char *pkgname,
+int maintainer_script_new(struct pkginfo *pkg,
 			  const char *scriptname, const char *description,
                           const char *cidir, char *cidirrest, ...);
 int maintainer_script_alternative(struct pkginfo *pkg,
@@ -234,8 +249,8 @@ void post_postinst_tasks_core(struct pkginfo *pkg);
 void post_postinst_tasks(struct pkginfo *pkg, enum pkgstatus new_status);
 
 void clear_istobes(void);
-int isdirectoryinuse(struct filenamenode *namenode, struct pkginfo *pkg);
-int hasdirectoryconffiles(struct filenamenode *namenode, struct pkginfo *pkg);
+bool isdirectoryinuse(struct filenamenode *namenode, struct pkginfo *pkg);
+bool hasdirectoryconffiles(struct filenamenode *namenode, struct pkginfo *pkg);
 
 enum debugflags {
   dbg_general=           00001,
@@ -253,8 +268,7 @@ enum debugflags {
   dbg_triggersstupid =  040000,
 };
   
-void debug(int which, const char *fmt, ...) PRINTFFORMAT(2,3);
-void check_libver(void);
+void debug(int which, const char *fmt, ...) DPKG_ATTR_PRINTF(2);
 void log_action(const char *action, struct pkginfo *pkg);
 
 /* from trigproc.c */
@@ -272,10 +286,10 @@ void trig_activate_packageprocessing(struct pkginfo *pkg);
 
 /* from depcon.c */
 
-int depisok(struct dependency *dep, struct varbuf *whynot,
-            struct pkginfo **fixbyrm, int allowunconfigd);
+bool depisok(struct dependency *dep, struct varbuf *whynot,
+             struct pkginfo **fixbyrm, int allowunconfigd);
 struct cyclesofarlink;
-int findbreakcycle(struct pkginfo *pkg);
+bool findbreakcycle(struct pkginfo *pkg);
 void describedepcon(struct varbuf *addto, struct dependency *dep);
 
 #endif /* MAIN_H */

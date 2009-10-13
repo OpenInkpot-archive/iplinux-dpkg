@@ -2,7 +2,7 @@
  * dpkg-split - splitting and joining of multipart *.deb archives
  * dpkg-split.h - external definitions for this program
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -23,7 +23,7 @@
 #define DPKG_SPLIT_H
 
 typedef void dofunction(const char *const *argv);
-dofunction do_split NONRETURNING;
+dofunction do_split DPKG_ATTR_NORET;
 dofunction do_join, do_info, do_auto, do_queue, do_discard;
 
 struct partinfo {
@@ -57,8 +57,8 @@ extern const char *depotdir, *outputfile;
 extern struct partqueue *queue;
 extern int npquiet, msdos;
 
-void rerr(const char *fn) NONRETURNING;
-void rerreof(FILE *f, const char *fn) NONRETURNING;
+void rerr(const char *fn) DPKG_ATTR_NORET;
+void rerreof(FILE *f, const char *fn) DPKG_ATTR_NORET;
 void print_info(const struct partinfo *pi);
 struct partinfo *read_info(FILE *partfile, const char *fn, struct partinfo *ir);
 
@@ -67,7 +67,13 @@ void reassemble(struct partinfo **partlist, const char *outputfile);
 void mustgetpartinfo(const char *filename, struct partinfo *ri);
 void addtopartlist(struct partinfo**, struct partinfo*, struct partinfo *refi);
 
+#define SPLITVERSION       "2.1"
+
+#define PARTSDIR          "parts/"
+
 #define PARTMAGIC         "!<arch>\ndebian-split    "
 #define HEADERALLOWANCE    1024
+
+#define SPLITPARTDEFMAX    (450 * 1024)
 
 #endif /* DPKG_SPLIT_H */

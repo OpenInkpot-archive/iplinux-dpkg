@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * bindings.cc - keybinding manager object definitions and default bindings
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -18,18 +18,18 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "bindings.h"
 
@@ -44,15 +44,18 @@ keybindings::keybindings(const interpretation *ints, const orgbinding *orgbindin
 int keybindings::bind(int key, const char *action) {
   if (key == -1) return 0;
   
-  const interpretation *interp;
-  for (interp=interps; interp->action && strcmp(interp->action,action); interp++);
+  const interpretation *interp = interps;
+  while (interp->action && strcmp(interp->action, action))
+    interp++;
   if (!interp->action) return 0;
   
-  const description *desc;
-  for (desc=descriptions; desc->action && strcmp(desc->action,action); desc++);
+  const description *desc = descriptions;
+  while (desc->action && strcmp(desc->action, action))
+   desc++;
 
-  binding *bind;
-  for (bind=bindings; bind && bind->key != key; bind=bind->next);
+  binding *bind = bindings;
+  while (bind && bind->key != key)
+    bind = bind->next;
   
   if (!bind) {
     bind= new binding;
@@ -66,8 +69,9 @@ int keybindings::bind(int key, const char *action) {
 }
 
 const char *keybindings::find(const char *action) {
-  binding *b;
-  for (b=bindings; b && strcmp(action,b->interp->action); b=b->next);
+  binding *b = bindings;
+  while (b && strcmp(action, b->interp->action))
+    b = b->next;
   if (!b) return _("[not bound]");
   const char *n= key2name(b->key);
   if (n) return n;
@@ -77,8 +81,9 @@ const char *keybindings::find(const char *action) {
 }
 
 const keybindings::interpretation *keybindings::operator()(int key) {
-  binding *b;
-  for (b=bindings; b && b->key != key; b=b->next);
+  binding *b = bindings;
+  while (b && b->key != key)
+    b = b->next;
   if (!b) return 0;
   return b->interp;
 }
@@ -105,14 +110,16 @@ const char **keybindings::describenext() {
 }
 
 const char *keybindings::key2name(int key) {
-  const keyname *search;
-  for (search=keynames; search->key != -1 && search->key != key; search++);
+  const keyname *search = keynames;
+  while (search->key != -1 && search->key != key)
+    search++;
   return search->kname;
 }
 
 int keybindings::name2key(const char *name) {
-  const keyname *search;
-  for (search=keynames; search->kname && strcasecmp(search->kname,name); search++);
+  const keyname *search = keynames;
+  while (search->kname && strcasecmp(search->kname, name))
+    search++;
   return search->key;
 }
 

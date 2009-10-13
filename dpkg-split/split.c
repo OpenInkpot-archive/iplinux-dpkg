@@ -2,7 +2,7 @@
  * dpkg-split - splitting and joining of multipart *.deb archives
  * split.c - splitting archives
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,18 +19,22 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
-#include <assert.h>
 #include <unistd.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
+
 #include "dpkg-split.h"
 
 void do_split(const char *const *argv) {
@@ -52,14 +56,15 @@ void do_split(const char *const *argv) {
     strcpy(palloc,sourcefile);
     if (!strcmp(palloc+l-(sizeof(DEBEXT)-1),DEBEXT)) {
       l -= (sizeof(DEBEXT)-1);
-      palloc[l]= 0;
+      palloc[l] = '\0';
     }
     prefix= palloc;
   }
   sprintf(partsizebuf,"%ld",maxpartsize-HEADERALLOWANCE);
   sprintf(partsizeallowbuf,"%ld",maxpartsize);
   fd= open(sourcefile,O_RDONLY);
-  if (!fd) ohshite(_("unable to open source file `%.250s'"),sourcefile);
+  if (fd < 0)
+    ohshite(_("unable to open source file `%.250s'"), sourcefile);
   if (fstat(fd,&stab)) ohshite(_("unable to fstat source file"));
   if (!S_ISREG(stab.st_mode)) ohshit(_("source file `%.250s' not a plain file"),sourcefile);
   sprintf(lengthbuf,"%lu",(unsigned long)stab.st_size);

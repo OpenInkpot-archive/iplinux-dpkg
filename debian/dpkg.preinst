@@ -26,12 +26,44 @@ upgrade_dpkg_non_conffile()
     fi
 }
 
+kill_bad_alternatives () {
+    local IFS=""
+    ALTDIR="/var/lib/dpkg/alternatives"
+    for alt in $ALTDIR/*; do
+        if [ ! -f $alt ]; then
+            # In case it's been removed by the code below, or in case
+            # it's not a real file
+            continue
+        fi
+        {
+            read mode || continue
+            read mainlink || continue
+            while true; do
+                read slave || break
+                if [ "$slave" = "" ]; then
+                    break
+                fi
+                if [ -e "$ALTDIR/$slave" ]; then
+                    echo "Removing conflicting master alternative $slave (it is slave of $(basename $alt))..."
+                    rm -f "$ALTDIR/$slave"
+                fi
+                read slavelink || break
+            done
+        } <$alt
+    done
+}
 
 case "$1" in
     install)
 	;;
 
     upgrade)
+        # Cleanup bad alternatives that would choke with new
+        # update-alternatives (see #530633, #531611, #532739, #521760)
+        if dpkg --compare-versions "$2" lt 1.15.3; then
+            kill_bad_alternatives
+        fi
+
 	case "$2" in
 	    # Upgrade from pre-conffile dpkg.cfg
 	    1.9.21 | 1.10.* )

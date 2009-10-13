@@ -2,7 +2,7 @@
  * dpkg-split - splitting and joining of multipart *.deb archives
  * join.c - joining
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,8 +29,10 @@
 #include <assert.h>
 #include <string.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
+
 #include "dpkg-split.h"
 
 void reassemble(struct partinfo **partlist, const char *outputfile) {
@@ -37,7 +42,7 @@ void reassemble(struct partinfo **partlist, const char *outputfile) {
   unsigned int i;
   size_t nr,buffersize;
 
-  printf("Putting package %s together from %d parts: ",
+  printf(_("Putting package %s together from %d parts: "),
          partlist[0]->package,partlist[0]->maxpartn);
   
   buffersize= partlist[0]->maxpartlen;
@@ -99,7 +104,9 @@ void do_join(const char *const *argv) {
   unsigned int i;
   
   assert(!queue);
-  if (!*argv) badusage(_("--join requires one or more part file arguments"));
+  if (!*argv)
+    badusage(_("--%s requires one or more part file arguments"),
+             cipaction->olong);
   while ((thisarg= *argv++)) {
     pq= nfmalloc(sizeof(struct partqueue));
 

@@ -1,4 +1,4 @@
-# Copyright 2008 Raphaël Hertzog <hertzog@debian.org>
+# Copyright © 2008 Raphaël Hertzog <hertzog@debian.org>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -23,11 +23,10 @@ use base 'Dpkg::Source::Package';
 
 use Dpkg;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(error errormsg syserr warning usageerr subprocerr info);
+use Dpkg::ErrorHandling;
 use Dpkg::Compression;
 use Dpkg::Source::Archive;
 use Dpkg::Source::Patch;
-use Dpkg::Version qw(check_version);
 use Dpkg::Exit;
 use Dpkg::Source::Functions qw(erasedir is_binary);
 
@@ -53,7 +52,8 @@ sub init_options {
         unless exists $self->{'options'}{'preparation'};
     $self->{'options'}{'skip_patches'} = 0
         unless exists $self->{'options'}{'skip_patches'};
-
+    $self->{'options'}{'skip_debianization'} = 0
+        unless exists $self->{'options'}{'skip_debianization'};
 }
 
 sub parse_cmdline_option {
@@ -73,6 +73,9 @@ sub parse_cmdline_option {
     } elsif ($opt =~ /^--skip-patches$/) {
         $self->{'options'}{'skip_patches'} = 1;
         return 1;
+    } elsif ($opt =~ /^--skip-debianization$/) {
+        $self->{'options'}{'skip_debianization'} = 1;
+        return 1;
     }
     return 0;
 }
@@ -82,8 +85,6 @@ sub do_extract {
     my $fields = $self->{'fields'};
 
     my $dscdir = $self->{'basedir'};
-
-    check_version($fields->{'Version'});
 
     my $basename = $self->get_basename();
     my $basenamerev = $self->get_basename(1);
@@ -96,7 +97,7 @@ sub do_extract {
         $seen{$uncompressed} = 1;
         if ($file =~ /^\Q$basename\E\.orig\.tar\.$comp_regex$/) {
             $tarfile = $file;
-        } elsif ($file =~ /^\Q$basename\E\.orig-(\w+)\.tar\.$comp_regex$/) {
+        } elsif ($file =~ /^\Q$basename\E\.orig-([\w-]+)\.tar\.$comp_regex$/) {
             $origtar{$1} = $file;
         } elsif ($file =~ /^\Q$basenamerev\E\.debian\.tar\.$comp_regex$/) {
             $debianfile = $file;
@@ -128,6 +129,9 @@ sub do_extract {
         $tar = Dpkg::Source::Archive->new(filename => "$dscdir$file");
         $tar->extract("$newdirectory/$subdir", no_fixperms => 1);
     }
+
+    # Stop here if debianization is not wanted
+    return if $self->{'options'}{'skip_debianization'};
 
     # Extract debian tarball after removing the debian directory
     info(_g("unpacking %s"), $debianfile);
@@ -175,6 +179,8 @@ sub get_patches {
 
 sub apply_patches {
     my ($self, $dir, $skip_auto) = @_;
+    my @patches = $self->get_patches($dir, $skip_auto);
+    return unless scalar(@patches);
     my $timestamp = time();
     my $applied = File::Spec->catfile($dir, "debian", "patches", ".dpkg-source-applied");
     open(APPLIED, '>', $applied) || syserr(_g("cannot write %s"), $applied);
@@ -246,7 +252,7 @@ sub do_build {
             $tarfile = $_;
             push @origtarballs, $_;
             $self->add_file($_);
-        } elsif (/\.orig-(\w+)\.tar\.$comp_regex$/) {
+        } elsif (/\.orig-([\w-]+)\.tar\.$comp_regex$/) {
             $origtar{$1} = $_;
             push @origtarballs, $_;
             $self->add_file($_);
@@ -284,10 +290,10 @@ sub do_build {
     my %auth_bin_files;
     my $incbin_file = File::Spec->catfile($dir, "debian", "source", "include-binaries");
     if (-f $incbin_file) {
-        open(INC, "<", $incbin_file) || syserr(_g("can't read %s"), $incbin_file);
+        open(INC, "<", $incbin_file) || syserr(_g("cannot read %s"), $incbin_file);
         while(defined($_ = <INC>)) {
             chomp; s/^\s*//; s/\s*$//;
-            next if /^#/;
+            next if /^#/ or /^$/;
             $auth_bin_files{$_} = 1;
         }
         close(INC);
@@ -322,7 +328,29 @@ sub do_build {
             }
         }
     };
-    find({ wanted => $check_binary, no_chdir => 1 }, File::Spec->catdir($dir, "debian"));
+    my $tar_ignore_glob = "{" . join(",",
+        map {
+            my $copy = $_;
+            $copy =~ s/,/\\,/g;
+            $copy;
+        } @{$self->{'options'}{'tar_ignore'}}) . "}";
+    my $filter_ignore = sub {
+        # Filter out files that are not going to be included in the debian
+        # tarball due to ignores. Note that the filter logic does not
+        # correspond 100% to the logic of tar --exclude as it doesn't
+        # handle matching files on their full path inside the tarball
+        my %exclude;
+        foreach my $fn (glob($tar_ignore_glob)) {
+            $exclude{$fn} = 1;
+        }
+        my @result;
+        foreach my $fn (@_) {
+            push @result, $fn unless exists $exclude{$fn};
+        }
+        return @result;
+    };
+    find({ wanted => $check_binary, preprocess => $filter_ignore },
+         File::Spec->catdir($dir, "debian"));
     error(_g("detected %d unwanted binary file(s) " .
         "(add them in debian/source/include-binaries to allow their " .
         "inclusion)."), $unwanted_binaries) if $unwanted_binaries;
@@ -360,6 +388,7 @@ sub do_build {
                 syserr(_g("unable to change permission of `%s'"), $autopatch);
     }
     $self->register_autopatch($dir);
+    rmdir(File::Spec->catdir($dir, "debian", "patches")); # No check on purpose
     pop @Dpkg::Exit::handlers;
 
     # Remove the temporary directory
@@ -369,7 +398,7 @@ sub do_build {
     # Update debian/source/include-binaries if needed
     if (scalar(@binary_files) and $include_binaries) {
         mkpath(File::Spec->catdir($dir, "debian", "source"));
-        open(INC, ">>", $incbin_file) || syserr(_g("can't write %s"), $incbin_file);
+        open(INC, ">>", $incbin_file) || syserr(_g("cannot write %s"), $incbin_file);
         foreach my $binary (@binary_files) {
             unless ($auth_bin_files{$binary}) {
                 print INC "$binary\n";

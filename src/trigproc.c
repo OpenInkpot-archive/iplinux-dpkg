@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * trigproc.c - trigger processing
  *
- * Copyright (C) 2007 Canonical Ltd
+ * Copyright © 2007 Canonical Ltd
  * written by Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
@@ -21,13 +21,17 @@
  */
 
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <assert.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/fcntl.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
 
 #include "main.h"
 #include "filesdb.h"
@@ -98,7 +102,7 @@ trigproc_enqueue_deferred(struct pkginfo *pend)
 void
 trigproc_run_deferred(void)
 {
-	struct pkginqueue *node;
+	struct pkg_list *node;
 	struct pkginfo *pkg;
 
 	debug(dbg_triggers, "trigproc_run_deferred");
@@ -173,6 +177,7 @@ check_trigger_cycle(struct pkginfo *processing_now)
 		tcpp->next = tcn->pkgs;
 		tcn->pkgs = tcpp;
 	}
+	iterpkgend(it);
 	if (!hare) {
 		debug(dbg_triggersdetail, "check_triggers_cycle pnow=%s first",
 		      processing_now->name);
@@ -295,6 +300,9 @@ trigproc(struct pkginfo *pkg)
 		}
 		varbufaddc(&namesarg, 0);
 
+		/* Setting the status to halfconfigured
+		 * causes modstatdb_note to clear pending triggers.
+		 */
 		pkg->status = stat_halfconfigured;
 		modstatdb_note(pkg);
 

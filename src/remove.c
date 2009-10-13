@@ -1,22 +1,8 @@
-/* Change: separate removal_bulk handling of halfinstalled or unpacked pkgs
- *         (ie, remove the real files in the .deb) into its own function.
- *         Note that "installed" state is converted to unpacked by 
- *         deferred_remove() or halfinstalled by process_archive())
- *
- * Change: separate purging of configfiles and running of postrm to its
- *         own function.
- *
- * Change: retry removing directories after postrm purge is finished, to
- *         handle directories that had conffiles or config files and so
- *         forth in them. also only warn about non-empty directories at
- *         that point.
- */
-
 /*
  * dpkg - main program for package management
  * remove.c - functionality for removing packages
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -33,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <errno.h>
 #include <stdio.h>
@@ -48,9 +37,9 @@
 #include <string.h>
 #include <assert.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
 
 #include "filesdb.h"
 #include "main.h"
@@ -84,24 +73,22 @@ static void checkforremoval(struct pkginfo *pkgtoremove,
 }
 
 void deferred_remove(struct pkginfo *pkg) {
-  struct varbuf raemsgs;
+  struct varbuf raemsgs = VARBUF_INIT;
   int rok;
   struct dependency *dep;
 
   debug(dbg_general,"deferred_remove package %s",pkg->name);
   
   if (pkg->status == stat_notinstalled) {
-    fprintf(stderr,
-            _("dpkg - warning: ignoring request to remove %.250s which isn't installed.\n"),
+    warning(_("ignoring request to remove %.250s which isn't installed."),
             pkg->name);
     pkg->clientdata->istobe= itb_normal;
     return;
   } else if (!f_pending &&
              pkg->status == stat_configfiles &&
              cipaction->arg != act_purge) {
-    fprintf(stderr,
-            _("dpkg - warning: ignoring request to remove %.250s, only the config\n"
-            " files of which are on the system.  Use --purge to remove them too.\n"),
+    warning(_("ignoring request to remove %.250s, only the config\n"
+              " files of which are on the system. Use --purge to remove them too."),
             pkg->name);
     pkg->clientdata->istobe= itb_normal;
     return;
@@ -117,7 +104,6 @@ void deferred_remove(struct pkginfo *pkg) {
   if (!f_noact) modstatdb_note(pkg);
 
   debug(dbg_general,"checking dependencies for remove `%s'",pkg->name);
-  varbufinit(&raemsgs);
   rok= 2;
   checkforremoval(pkg,pkg,&rok,&raemsgs);
   for (dep= pkg->installed.depends; dep; dep= dep->next) {
@@ -141,13 +127,13 @@ void deferred_remove(struct pkginfo *pkg) {
   } else if (raemsgs.used) {
     varbufaddc(&raemsgs,0);
     fprintf(stderr,
-            _("dpkg: %s: dependency problems, but removing anyway as you request:\n%s"),
+            _("dpkg: %s: dependency problems, but removing anyway as you requested:\n%s"),
             pkg->name, raemsgs.buf);
   }
   varbuffree(&raemsgs);
   sincenothing= 0;
 
-  if (pkg->eflag & eflagf_reinstreq)
+  if (pkg->eflag & eflag_reinstreq)
     forcibleerr(fc_removereinstreq,
                 _("Package is in a very bad inconsistent state - you should\n"
                 " reinstall it before attempting a removal."));
@@ -214,15 +200,21 @@ static void removal_bulk_remove_files(
     reversefilelist_init(&rlistit,pkg->clientdata->files);
     leftover = NULL;
     while ((namenode= reversefilelist_next(&rlistit))) {
+      struct filenamenode *usenode;
+
       debug(dbg_eachfile, "removal_bulk `%s' flags=%o",
             namenode->name, namenode->flags);
       if (namenode->flags & fnnf_old_conff) {
         push_leftover(&leftover,namenode);
         continue;
       }
+
+      usenode = namenodetouse(namenode, pkg);
+      trig_file_activate(usenode, pkg);
+
       varbufreset(&fnvb);
       varbufaddstr(&fnvb,instdir);
-      varbufaddstr(&fnvb,namenodetouse(namenode,pkg)->name);
+      varbufaddstr(&fnvb, usenode->name);
       before= fnvb.used;
       
       varbufaddstr(&fnvb,DPKGTEMPEXT);
@@ -259,32 +251,16 @@ static void removal_bulk_remove_files(
         push_leftover(&leftover,namenode);
         continue;
       } else if (errno == EBUSY || errno == EPERM) {
-        fprintf(stderr, _("dpkg - warning: while removing %.250s,"
-                " unable to remove directory `%.250s':"
-                " %s - directory may be a mount point ?\n"),
+        warning(_("while removing %.250s, unable to remove directory '%.250s': "
+                  "%s - directory may be a mount point?"),
                 pkg->name, namenode->name, strerror(errno));
         push_leftover(&leftover,namenode);
         continue;
       }
       if (errno != ENOTDIR) ohshite(_("cannot remove `%.250s'"),fnvb.buf);
       debug(dbg_eachfiledetail, "removal_bulk unlinking `%s'", fnvb.buf);
-      {
-        /*
-         * If file to remove is a device or s[gu]id, change its mode
-         * so that a malicious user cannot use it even if it's linked
-         * to another file
-         */
-        struct stat stat_buf;
-        if (lstat(fnvb.buf,&stat_buf)==0) {
-          if (S_ISCHR(stat_buf.st_mode) || S_ISBLK(stat_buf.st_mode)) {
-            chmod(fnvb.buf,0);
-          }
-          if (stat_buf.st_mode & (S_ISUID|S_ISGID)) {
-            chmod(fnvb.buf,stat_buf.st_mode & ~(S_ISUID|S_ISGID));
-          }
-        }
-      }
-      if (unlink(fnvb.buf)) ohshite(_("cannot remove file `%.250s'"),fnvb.buf);
+      if (secure_unlink(fnvb.buf))
+        ohshite(_("unable to securely remove '%.250s'"), fnvb.buf);
     }
     write_filelist_except(pkg,leftover,0);
     maintainer_script_installed(pkg, POSTRMFILE, "post-removal",
@@ -341,6 +317,8 @@ static void removal_bulk_remove_leftover_dirs(struct pkginfo *pkg) {
   reversefilelist_init(&rlistit,pkg->clientdata->files);
   leftover = NULL;
   while ((namenode= reversefilelist_next(&rlistit))) {
+    struct filenamenode *usenode;
+
     debug(dbg_eachfile, "removal_bulk `%s' flags=%o",
           namenode->name, namenode->flags);
     if (namenode->flags & fnnf_old_conff) {
@@ -348,9 +326,12 @@ static void removal_bulk_remove_leftover_dirs(struct pkginfo *pkg) {
       continue;
     }
 
+    usenode = namenodetouse(namenode, pkg);
+    trig_file_activate(usenode, pkg);
+
     varbufreset(&fnvb);
     varbufaddstr(&fnvb,instdir);
-    varbufaddstr(&fnvb,namenodetouse(namenode,pkg)->name);
+    varbufaddstr(&fnvb, usenode->name);
     varbufaddc(&fnvb,0);
 
     if (!stat(fnvb.buf,&stab) && S_ISDIR(stab.st_mode)) {
@@ -369,16 +350,13 @@ static void removal_bulk_remove_leftover_dirs(struct pkginfo *pkg) {
     debug(dbg_eachfiledetail, "removal_bulk removing `%s'", fnvb.buf);
     if (!rmdir(fnvb.buf) || errno == ENOENT || errno == ELOOP) continue;
     if (errno == ENOTEMPTY || errno == EEXIST) {
-      fprintf(stderr,
-              _("dpkg - warning: while removing %.250s, directory `%.250s' not empty "
-              "so not removed.\n"),
+      warning(_("while removing %.250s, directory '%.250s' not empty so not removed."),
               pkg->name, namenode->name);
       push_leftover(&leftover,namenode);
       continue;
     } else if (errno == EBUSY || errno == EPERM) {
-      fprintf(stderr, _("dpkg - warning: while removing %.250s,"
-              " unable to remove directory `%.250s':"
-              " %s - directory may be a mount point ?\n"),
+      warning(_("while removing %.250s, unable to remove directory '%.250s': "
+                "%s - directory may be a mount point?"),
               pkg->name, namenode->name, strerror(errno));
       push_leftover(&leftover,namenode);
       continue;
@@ -437,7 +415,7 @@ static void removal_bulk_remove_configfiles(struct pkginfo *pkg) {
         *lconffp= conff->next;
       } else {
         debug(dbg_conffdetail,"removal_bulk set to new conffile `%s'",conff->name);
-        conff->hash= NEWCONFFILEFLAG; /* yes, cast away const */
+        conff->hash = NEWCONFFILEFLAG;
         lconffp= &conff->next;
       }
     }
@@ -448,7 +426,6 @@ static void removal_bulk_remove_configfiles(struct pkginfo *pkg) {
       if (conff->obsolete) {
 	debug(dbg_conffdetail, "removal_bulk conffile obsolete %s",
 	      conff->name);
-	continue;
       }
       varbufreset(&fnvb);
       r= conffderef(pkg, &fnvb, conff->name);
@@ -460,7 +437,7 @@ static void removal_bulk_remove_configfiles(struct pkginfo *pkg) {
         ohshite(_("cannot remove old config file `%.250s' (= `%.250s')"),
                 conff->name, fnvb.buf);
       p= strrchr(fnvb.buf,'/'); if (!p) continue;
-      *p= 0;
+      *p = '\0';
       varbufreset(&removevb);
       varbufaddstr(&removevb,fnvb.buf);
       varbufaddc(&removevb,'/');
@@ -556,6 +533,7 @@ void removal_bulk(struct pkginfo *pkg) {
     debug(dbg_general, "removal_bulk no postrm, no conffiles, purging");
     pkg->want= want_purge;
 
+    blankversion(&pkg->configversion);
   } else if (pkg->want == want_purge) {
 
     removal_bulk_remove_configfiles(pkg);
@@ -587,21 +565,15 @@ void removal_bulk(struct pkginfo *pkg) {
     if (unlink(fnvb.buf) && errno != ENOENT) ohshite(_("can't remove old postrm script"));
 
     pkg->status= stat_notinstalled;
+    pkg->want = want_unknown;
 
     /* This will mess up reverse links, but if we follow them
      * we won't go back because pkg->status is stat_notinstalled.
      */
-    pkg->installed.depends = NULL;
-    pkg->installed.essential= 0;
-    pkg->installed.description = pkg->installed.maintainer = NULL;
-    pkg->installed.source = pkg->installed.installedsize = NULL;
-    pkg->installed.origin = pkg->installed.bugs = NULL;
-    pkg->installed.architecture = NULL;
-    blankversion(&pkg->installed.version);
-    pkg->installed.arbs = NULL;
+    blankpackageperfile(&pkg->installed);
   }
       
-  pkg->eflag= eflagv_ok;
+  pkg->eflag = eflag_ok;
   modstatdb_note(pkg);
 
   debug(dbg_general, "removal done");

@@ -35,8 +35,7 @@ use File::Temp qw(tempdir);
 use Dpkg;
 use Dpkg::Gettext;
 use Dpkg::Compression;
-use Dpkg::ErrorHandling qw(error subprocerr syserr info);
-use Dpkg::Version qw(check_version);
+use Dpkg::ErrorHandling;
 use Dpkg::Source::Archive;
 use Dpkg::Exit;
 use Dpkg::Source::Functions qw(erasedir);
@@ -170,8 +169,6 @@ sub do_extract {
     my $fields = $self->{'fields'};
 
     my $dscdir = $self->{'basedir'};
-
-    check_version($fields->{'Version'});
 
     my $basename = $self->get_basename();
     my $basenamerev = $self->get_basename(1);

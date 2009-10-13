@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * update.c - options which update the `available' database
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,18 +19,20 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <fnmatch.h>
-#include <assert.h>
 #include <unistd.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
 
 #include "main.h"
 
@@ -48,7 +50,7 @@ void updateavailable(const char *const *argv) {
       badusage(_("--%s needs exactly one Packages file argument"),cipaction->olong);
     break;
   default:
-    internerr("bad cipaction->arg in updateavailable");
+    internerr("unknown action '%d'", cipaction->arg);
   }
   
   if (!f_noact) {
@@ -71,7 +73,7 @@ void updateavailable(const char *const *argv) {
   case act_avclear:
     break;
   default:
-    internerr("bad cipaction->arg in update available");
+    internerr("unknown action '%d'", cipaction->arg);
   }
 
   varbufaddstr(&vb,admindir);
@@ -82,7 +84,8 @@ void updateavailable(const char *const *argv) {
     parsedb(vb.buf, pdb_recordavailable | pdb_rejectstatus, NULL, NULL, NULL);
 
   if (cipaction->arg != act_avclear)
-    count += parsedb(sourcefile, pdb_recordavailable | pdb_rejectstatus,
+    count += parsedb(sourcefile,
+		     pdb_recordavailable | pdb_rejectstatus | pdb_ignoreolder,
                      NULL, NULL, NULL);
 
   if (!f_noact) {
@@ -95,35 +98,9 @@ void updateavailable(const char *const *argv) {
 }
 
 void forgetold(const char *const *argv) {
-  struct pkgiterator *it;
-  struct pkginfo *pkg;
-  enum pkgwant oldwant;
+  if (*argv)
+    badusage(_("--%s takes no arguments"), cipaction->olong);
 
-  if (*argv) badusage(_("--forget-old-unavail takes no arguments"));
-
-  modstatdb_init(admindir, f_noact ? msdbrw_readonly : msdbrw_write);
-
-  it= iterpkgstart();
-  while ((pkg= iterpkgnext(it))) {
-    debug(dbg_eachfile,"forgetold checking %s",pkg->name);
-    if (informative(pkg,&pkg->available)) {
-      debug(dbg_eachfile,"forgetold ... informative available");
-      continue;
-    }
-    if (pkg->want != want_purge && pkg->want != want_deinstall) {
-      debug(dbg_eachfile,"forgetold ... informative want");
-      continue;
-    }
-    oldwant= pkg->want;
-    pkg->want= want_unknown;
-    if (informative(pkg,&pkg->installed)) {
-      debug(dbg_eachfile,"forgetold ... informative installed");
-      pkg->want= oldwant;
-      continue;
-    }
-    debug(dbg_general,"forgetold forgetting %s",pkg->name);
-  }
-  iterpkgend(it);
-  
-  modstatdb_shutdown();
+  warning(_("obsolete '--%s' option, unavailable packages are automatically cleaned up."),
+          cipaction->olong);
 }

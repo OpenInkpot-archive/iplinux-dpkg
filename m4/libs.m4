@@ -71,9 +71,9 @@ if test "x$with_selinux" != "xno"; then
 		[AC_DEFINE(WITH_SELINUX, 1,
 			[Define to 1 to compile in SELinux support])
 		 if test "x$with_selinux" = "xstatic"; then
-			dpkg_selinux_libs="-Wl,-Bstatic "`pkg-config --static --libs libselinux`" -Wl,-Bdynamic"
+			dpkg_selinux_libs="-Wl,-Bstatic "$(pkg-config --static --libs libselinux)" -Wl,-Bdynamic"
 		 else
-			dpkg_selinux_libs=`pkg-config --libs libselinux`
+			dpkg_selinux_libs=$(pkg-config --libs libselinux)
 		 fi
 		 SELINUX_LIBS="${SELINUX_LIBS:+$SELINUX_LIBS }$dpkg_selinux_libs"
 		 with_selinux="yes"],
@@ -93,6 +93,8 @@ fi
 # Check for curses library.
 AC_DEFUN([DPKG_LIB_CURSES],
 [AC_ARG_VAR([CURSES_LIBS], [linker flags for curses library])dnl
+AC_CHECK_HEADERS([ncursesw/ncurses.h ncurses/ncurses.h ncurses.h curses.h \
+                  ncursesw/term.h ncurses/term.h term.h])
 AC_CHECK_LIB([ncursesw], [initscr], [CURSES_LIBS="${CURSES_LIBS:+$CURSES_LIBS }-lncursesw"],
 	[AC_CHECK_LIB([ncurses], [initscr], [CURSES_LIBS="${CURSES_LIBS:+$CURSES_LIBS }-lncurses"],
 		[AC_CHECK_LIB([curses], [initscr], [CURSES_LIBS="${CURSES_LIBS:+$CURSES_LIBS }-lcurses"],

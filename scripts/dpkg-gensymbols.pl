@@ -9,8 +9,8 @@ use Dpkg::Shlibs qw(@librarypaths);
 use Dpkg::Shlibs::Objdump;
 use Dpkg::Shlibs::SymbolFile;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(warning error syserr usageerr);
-use Dpkg::Control;
+use Dpkg::ErrorHandling;
+use Dpkg::Control::Info;
 use Dpkg::Changelog qw(parse_changelog);
 use Dpkg::Path qw(check_files_are_the_same);
 
@@ -24,6 +24,7 @@ my $oppackage;
 my $compare = 1; # Bail on missing symbols by default
 my $input;
 my $output;
+my $template_mode = 0; # non-template mode by default
 my $debug = 0;
 my $host_arch = get_host_arch();
 
@@ -60,6 +61,8 @@ Options:
                            file instead of the default file.
   -O<file>                 write to <file>, not .../DEBIAN/symbols.
   -O                       write to stdout, not .../DEBIAN/symbols.
+  -t                       write in template mode (tags are not
+                           processed and included in output).
   -d                       display debug information during work.
   -h, --help               show this help message.
       --version            show the version.
@@ -75,9 +78,9 @@ while (@ARGV) {
 	$compare = defined($1) ? $1 : 1;
     } elsif (m/^-d$/) {
 	$debug = 1;
-    } elsif (m/^-v(.*)/) {
+    } elsif (m/^-v(.+)$/) {
 	$sourceversion = $1;
-    } elsif (m/^-e(.*)/) {
+    } elsif (m/^-e(.+)$/) {
 	my $file = $1;
 	if (-e $file) {
 	    push @files, $file;
@@ -86,7 +89,7 @@ while (@ARGV) {
 	}
     } elsif (m/^-p(.*)/) {
 	error(_g("Illegal package name \`%s'"), $1);
-    } elsif (m/^-P(.*)$/) {
+    } elsif (m/^-P(.+)$/) {
 	$packagebuilddir = $1;
 	$packagebuilddir =~ s{/+$}{};
     } elsif (m/^-O$/) {
@@ -95,14 +98,20 @@ while (@ARGV) {
 	$input = $1;
     } elsif (m/^-O(.+)$/) {
 	$output = $1;
+    } elsif (m/^-t$/) {
+	$template_mode = 1;
     } elsif (m/^-(h|-help)$/) {
-	&usage; exit(0);
+	usage();
+	exit(0);
     } elsif (m/^--version$/) {
-	&version; exit(0);
+	version();
+	exit(0);
     } else {
 	usageerr(_g("unknown option \`%s'"), $_);
     }
 }
+
+umask 0022; # ensure sane default permissions for created files
 
 if (exists $ENV{DPKG_GENSYMBOLS_CHECK_LEVEL}) {
     $compare = $ENV{DPKG_GENSYMBOLS_CHECK_LEVEL};
@@ -113,7 +122,7 @@ if (not defined($sourceversion)) {
     $sourceversion = $changelog->{"Version"};
 }
 if (not defined($oppackage)) {
-    my $control = Dpkg::Control->new();
+    my $control = Dpkg::Control::Info->new();
     my @packages = map { $_->{'Package'} } $control->get_packages();
     @packages == 1 ||
 	error(_g("must specify package since control info has many (%s)"),
@@ -121,8 +130,8 @@ if (not defined($oppackage)) {
     $oppackage = $packages[0];
 }
 
-my $symfile = Dpkg::Shlibs::SymbolFile->new();
-my $ref_symfile = Dpkg::Shlibs::SymbolFile->new();
+my $symfile = Dpkg::Shlibs::SymbolFile->new(arch => $host_arch);
+my $ref_symfile = Dpkg::Shlibs::SymbolFile->new(arch => $host_arch);
 # Load source-provided symbol information
 foreach my $file ($input, $output, "debian/$oppackage.symbols.$host_arch",
     "debian/symbols.$host_arch", "debian/$oppackage.symbols",
@@ -185,7 +194,8 @@ $symfile->clear_except(keys %{$od->{objects}});
 # Write out symbols files
 if ($stdout) {
     $output = "standard output";
-    $symfile->save("-");
+    $symfile->save("-", package => $oppackage,
+                   template_mode => $template_mode, with_deprecated => 0);
 } else {
     unless (defined($output)) {
 	unless($symfile->is_empty()) {
@@ -195,7 +205,8 @@ if ($stdout) {
     }
     if (defined($output)) {
 	print "Storing symbols in $output.\n" if $debug;
-	$symfile->save($output);
+	$symfile->save($output, package => $oppackage,
+                       template_mode => $template_mode, with_deprecated => 0);
     } else {
 	print "No symbol information to store.\n" if $debug;
     }
@@ -233,12 +244,12 @@ if ($compare) {
 	    $list = "\n";
 	    my $cur_soname = "";
 	    foreach my $sym (sort { $a->{soname} cmp $b->{soname} or
-				    $a->{name} cmp $b->{name} } @syms) {
+				    $a->get_symboltempl() cmp $b->get_symboltempl() } @syms) {
 		if ($cur_soname ne $sym->{soname}) {
 		    $list .= $sym->{soname} . "\n";
 		    $cur_soname = $sym->{soname};
 		}
-		$list .= " " . $sym->{name} . "\n";
+		$list .= " " . $sym->get_symbolname() . "\n";
 	    }
 	}
 	warning(_g("some symbols disappeared in the symbols file: %s"), $list);
@@ -249,7 +260,8 @@ if ($compare) {
 	# and after
 	my $before = File::Temp->new(TEMPLATE=>'dpkg-gensymbolsXXXXXX');
 	my $after = File::Temp->new(TEMPLATE=>'dpkg-gensymbolsXXXXXX');
-	$ref_symfile->dump($before); $symfile->dump($after);
+	$ref_symfile->dump($before, package => $oppackage, template_mode => 1);
+	$symfile->dump($after, package => $oppackage, template_mode => 1);
 	seek($before, 0, 0); seek($after, 0, 0);
 	my ($md5_before, $md5_after) = (Digest::MD5->new(), Digest::MD5->new());
 	$md5_before->addfile($before);
@@ -264,7 +276,10 @@ if ($compare) {
 			$output);
 	    }
 	    my ($a, $b) = ($before->filename, $after->filename);
-	    system("diff", "-u", $a, $b) if -x "/usr/bin/diff";
+	    my $diff_label = sprintf("%s (%s %s)",
+	    ($ref_symfile->{file}) ? $ref_symfile->{file} : "new_symbol_file",
+	    $oppackage, $host_arch);
+	    system("diff", "-u", "-L", $diff_label, $a, $b) if -x "/usr/bin/diff";
 	}
     }
 }

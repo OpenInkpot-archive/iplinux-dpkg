@@ -2,7 +2,7 @@
  * dpkg-split - splitting and joining of multipart *.deb archives
  * main.c - main program
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <string.h>
 #include <stdio.h>
@@ -28,32 +31,41 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#if HAVE_LOCALE_H
+#include <locale.h>
+#endif
+
+#include <dpkg/macros.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
 
 #include "dpkg-split.h"
 
-void
-printversion(void)
+static void
+printversion(const struct cmdinfo *cip, const char *value)
 {
-  if (printf(_("Debian `%s' package split/join tool; version %s.\n"),
-	     SPLITTER, DPKG_VERSION_ARCH) < 0) werr ("stdout");
-  if (printf(_("Copyright (C) 1994-1996 Ian Jackson.\n")) < 0) werr ("stdout");
-  if (printf(_("This is free software; see the GNU General Public License version 2 or\n"
-	       "later for copying conditions. There is NO warranty.\n"
-	       "See %s --license for copyright and license details.\n"),
-	     SPLITTER) < 0) werr("stdout");
+  printf(_("Debian `%s' package split/join tool; version %s.\n"),
+         SPLITTER, DPKG_VERSION_ARCH);
+  printf(_("Copyright (C) 1994-1996 Ian Jackson.\n"));
+  printf(_(
+"This is free software; see the GNU General Public License version 2 or\n"
+"later for copying conditions. There is NO warranty.\n"
+"See %s --license for copyright and license details.\n"), SPLITTER);
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
 }
 
-void
-usage(void)
+static void
+usage(const struct cmdinfo *cip, const char *value)
 {
-  if (printf(_(
+  printf(_(
 "Usage: %s [<option> ...] <command>\n"
-"\n"), SPLITTER) < 0) werr("stdout");
+"\n"), SPLITTER);
 
-  if (printf(_(
+  printf(_(
 "Commands:\n"
 "  -s|--split <file> [<prefix>]     Split an archive.\n"
 "  -j|--join <part> <part> ...      Join parts together.\n"
@@ -61,15 +73,15 @@ usage(void)
 "  -a|--auto -o <complete> <part>   Auto-accumulate parts.\n"
 "  -l|--listq                       List unmatched pieces.\n"
 "  -d|--discard [<filename> ...]    Discard unmatched pieces.\n"
-"\n")) < 0) werr("stdout");
+"\n"));
 
-  if (printf(_(
+  printf(_(
 "  -h|--help                        Show this help message.\n"
 "  --version                        Show the version.\n"
 "  --license|--licence              Show the copyright licensing terms.\n"
-"\n")) < 0) werr("stdout");
+"\n"));
 
-  if (printf(_(
+  printf(_(
 "Options:\n"
 "  --depotdir <directory>           Use <directory> instead of %s/%s.\n"
 "  -S|--partsize <size>             In KiB, for -s (default is 450).\n"
@@ -78,7 +90,11 @@ usage(void)
 "  --msdos                          Generate 8.3 filenames.\n"
 "\n"
 "Exit status: 0 = OK;  1 = -a is not a part;  2 = trouble!\n"),
-	     ADMINDIR, PARTSDIR) < 0) werr("stdout");
+         ADMINDIR, PARTSDIR);
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
 }
 
 const char thisname[]= SPLITTER;
@@ -107,12 +123,14 @@ static void setpartsize(const struct cmdinfo *cip, const char *value) {
   char *endp;
 
   newpartsize= strtol(value,&endp,10);
+  if (value == endp || *endp)
+    badusage(_("invalid integer for --%s: `%.250s'"), cip->olong, value);
   if (newpartsize <= 0 || newpartsize > (INT_MAX >> 10))
     badusage(_("part size is far too large or is not positive"));
 
   maxpartsize= newpartsize << 10;
   if (maxpartsize <= HEADERALLOWANCE)
-    badusage(_("part size must be at least %dk (to allow for header)"),
+    badusage(_("part size must be at least %d KiB (to allow for header)"),
              (HEADERALLOWANCE >> 10) + 1);
 }
 
@@ -135,8 +153,8 @@ static const struct cmdinfo cmdinfos[]= {
   { "auto",         'a',  0,  NULL, NULL,             setaction           },
   { "listq",        'l',  0,  NULL, NULL,             setaction           },
   { "discard",      'd',  0,  NULL, NULL,             setaction           },
-  { "help",         'h',  0,  NULL, NULL,             helponly            },
-  { "version",       0,   0,  NULL, NULL,             versiononly         },
+  { "help",         'h',  0,  NULL, NULL,             usage               },
+  { "version",       0,   0,  NULL, NULL,             printversion        },
   { "licence",       0,   0,  NULL, NULL,             showcopyright       }, /* UK spelling */
   { "license",       0,   0,  NULL, NULL,             showcopyright       }, /* US spelling */
   { "depotdir",      0,   1,  NULL, &depotdir,     NULL                   },
@@ -152,7 +170,7 @@ static void setaction(const struct cmdinfo *cip, const char *value) {
     badusage(_("conflicting actions -%c (--%s) and -%c (--%s)"),
              cip->oshort, cip->olong, cipaction->oshort, cipaction->olong);
   cipaction= cip;
-  assert((int)(cip-cmdinfos) < (int)(sizeof(dofunctions)*sizeof(dofunction*)));
+  assert((int)(cip - cmdinfos) < (int)(sizeof_array(dofunctions)));
   action= dofunctions[cip-cmdinfos];
 }
 
@@ -161,7 +179,13 @@ int main(int argc, const char *const *argv) {
   int l;
   char *p;
 
-  standard_startup(&ejbuf, argc, &argv, NULL, 0, cmdinfos);
+  setlocale(LC_ALL, "");
+  bindtextdomain(PACKAGE, LOCALEDIR);
+  textdomain(PACKAGE);
+
+  standard_startup(&ejbuf);
+  myopt(&argv, cmdinfos);
+
   if (!cipaction) badusage(_("need an action option"));
 
   l= strlen(depotdir);
@@ -175,8 +199,8 @@ int main(int argc, const char *const *argv) {
   setvbuf(stdout,NULL,_IONBF,0);
   action(argv);
 
-  if (ferror(stderr)) werr("stderr");
+  m_output(stderr, _("<standard error>"));
   
-  standard_shutdown(0);
+  standard_shutdown();
   exit(0);
 }

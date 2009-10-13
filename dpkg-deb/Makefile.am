@@ -1,9 +1,10 @@
 ## Process this file with automake to produce Makefile.in
 
 localedir = $(datadir)/locale
-INCLUDES = \
+AM_CPPFLAGS = \
 	-DLOCALEDIR=\"$(localedir)\" \
-	-idirafter $(top_srcdir)/libcompat \
+	-idirafter $(top_srcdir)/lib/compat \
+	-I$(top_builddir) \
 	-I$(top_srcdir)/lib
 
 
@@ -17,5 +18,10 @@ dpkg_deb_SOURCES = \
 	main.c
 
 dpkg_deb_LDADD = \
-	../libcompat/libcompat.a \
-	$(LIBINTL) ../lib/libdpkg.a $(ZLIB_LIBS) $(BZ2_LIBS) $(SELINUX_LIBS)
+	../lib/dpkg/libdpkg.a \
+	../lib/compat/libcompat.a \
+	$(LIBINTL) \
+	$(ZLIB_LIBS) \
+	$(BZ2_LIBS) \
+	$(SELINUX_LIBS)
+

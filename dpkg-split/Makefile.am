@@ -1,10 +1,11 @@
 ## Process this file with automake to produce Makefile.in
 
 localedir = $(datadir)/locale
-INCLUDES = \
+AM_CPPFLAGS = \
 	-DLOCALEDIR=\"$(localedir)\" \
 	-DADMINDIR=\"$(admindir)\" -DMKSPLITSCRIPT=\"$(pkglibdir)/mksplit\" \
-	-idirafter $(top_srcdir)/libcompat \
+	-idirafter $(top_srcdir)/lib/compat \
+	-I$(top_builddir) \
 	-I$(top_srcdir)/lib
 
 
@@ -19,9 +20,9 @@ dpkg_split_SOURCES = \
 	split.c
 
 dpkg_split_LDADD = \
-	../libcompat/libcompat.a \
-	$(LIBINTL) \
-	../lib/libdpkg.a
+	../lib/dpkg/libdpkg.a \
+	../lib/compat/libcompat.a \
+	$(LIBINTL)
 
 
 pkglib_SCRIPTS = mksplit
@@ -29,13 +30,13 @@ EXTRA_DIST = mksplit.pl
 CLEANFILES = $(pkglib_SCRIPTS)
 
 
-do_perl_subst = sed -e "s:^\#![:space:]*/usr/bin/perl:\#!$(PERL):"
+do_perl_subst = $(AM_V_GEN) sed -e "s:^\#![:space:]*/usr/bin/perl:\#!$(PERL):"
 
 
 %: %.pl Makefile
 	@test -d `dirname $@` || $(mkdir_p) `dirname $@`
 	$(do_perl_subst) <$< >$@
-	chmod +x $@
+	$(AM_V_at) chmod +x $@
 
 
 install-data-local:

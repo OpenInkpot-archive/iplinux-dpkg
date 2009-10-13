@@ -1,5 +1,5 @@
 .\" Authors: Ian Jackson
-.TH deb\-substvars 5 "2007-07-18" "Debian Project" "dpkg utilities"
+.TH deb\-substvars 5 "2008-08-18" "Debian Project" "dpkg utilities"
 .SH NAME
 deb\-substvars \- Debian source substitution variables
 .
@@ -30,6 +30,11 @@ string
 (which is not a legal substitution) is replaced with a
 .B $
 sign.
+
+While variable substitution is done on all control fields, some of those
+fields are used and needed during the build when the substitution did not
+yet occur. That's why you can't use variables in the \fBPackage\fP,
+\fBSource\fP and \fBArchitecture\fP fields.
 
 Variables can be set using the
 .B \-V
@@ -134,9 +139,9 @@ standard output field settings is rather confused.
 .BR dpkg\-source (1).
 .
 .SH AUTHOR
-Copyright (C) 1995-1996 Ian Jackson
+Copyright \(co 1995-1996 Ian Jackson
 .br
-Copyright (C) 2000 Wichert Akkerman
+Copyright \(co 2000 Wichert Akkerman
 .sp
 This is free software; see the GNU General Public Licence version 2 or
 later for copying conditions. There is NO WARRANTY.

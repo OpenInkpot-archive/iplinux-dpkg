@@ -1,16 +1,18 @@
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ(2.59)
-AC_INIT([dpkg], [1.14.25], [debian-dpkg@lists.debian.org])
-AC_CONFIG_SRCDIR([lib/dpkg.h])
+AC_PREREQ(2.60)
+AC_INIT([dpkg], [1.15.5~], [debian-dpkg@lists.debian.org])
+AC_CONFIG_SRCDIR([lib/dpkg/dpkg.h])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_AUX_DIR([config])
+AC_CONFIG_AUX_DIR([build-aux])
 
-AC_CANONICAL_SYSTEM
-AC_GNU_SOURCE
+AC_USE_SYSTEM_EXTENSIONS
 DPKG_ARCHITECTURE
 
-AM_INIT_AUTOMAKE([1.8 gnu])
+AM_INIT_AUTOMAKE([1.8 gnu nostdinc])
+
+m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])],
+                            [AC_SUBST([AM_DEFAULT_VERBOSITY], [1])])
 
 AM_GNU_GETTEXT_VERSION([0.16.1])
 AM_GNU_GETTEXT([external])
@@ -18,7 +20,7 @@ AM_GNU_GETTEXT([external])
 # Allow compilation without dselect
 AC_ARG_WITH(dselect,
 	AS_HELP_STRING([--without-dselect],
-		       [don't build dselect package-management frontend]),
+		       [do not build dselect package-management frontend]),
 	[build_dselect=$with_dselect],
 	[build_dselect=yes])
 AM_CONDITIONAL(WITH_DSELECT, [test "x$build_dselect" = "xyes"])
@@ -26,7 +28,7 @@ AM_CONDITIONAL(WITH_DSELECT, [test "x$build_dselect" = "xyes"])
 # Allow compilation without start-stop-daemon
 AC_ARG_WITH(start-stop-daemon,
 	AS_HELP_STRING([--without-start-stop-daemon],
-		       [don't build or use start-stop-daemon]),
+		       [do not build or use start-stop-daemon]),
 	[build_start_stop_daemon=$with_start_stop_daemon],
 	[build_start_stop_daemon=yes])
 AM_CONDITIONAL(WITH_START_STOP_DAEMON,
@@ -73,7 +75,8 @@ fi
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([stddef.h error.h locale.h libintl.h sys/cdefs.h kvm.h])
+AC_CHECK_HEADERS([stddef.h error.h locale.h libintl.h kvm.h \
+                  sys/cdefs.h sys/syscall.h])
 DPKG_CHECK_DEFINE(TIOCNOTTY, [sys/ioctl.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
@@ -93,14 +96,17 @@ DPKG_C_ATTRIBUTE
 
 # Checks for library functions.
 DPKG_FUNC_VA_COPY
-DPKG_CHECK_COMPAT_FUNCS([getopt getopt_long strnlen obstack_free])
-AC_CHECK_FUNCS([vsnprintf snprintf strtoul strerror strsignal alphasort \
-                isascii bcopy memcpy scandir unsetenv lchown setsid \
-                getdtablesize])
+DPKG_FUNC_C99_SNPRINTF
+DPKG_CHECK_DECL([offsetof], [stddef.h])
+DPKG_CHECK_DECL([WCOREDUMP], [sys/wait.h])
+DPKG_CHECK_COMPAT_FUNCS([getopt getopt_long obstack_free \
+                         strnlen strerror strsignal \
+                         scandir alphasort unsetenv])
+AC_CHECK_FUNCS([strtoul isascii bcopy memcpy lchown setsid getdtablesize])
 
-SJR_COMPILER_WARNINGS
-SJR_COMPILER_OPTIMISATIONS
-SJR_LINKER_OPTIMISATIONS
+DPKG_COMPILER_WARNINGS
+DPKG_COMPILER_OPTIMISATIONS
+DPKG_LINKER_OPTIMISATIONS
 
 AC_CONFIG_FILES([ Makefile
 		  dpkg-deb/Makefile
@@ -108,10 +114,11 @@ AC_CONFIG_FILES([ Makefile
 		  dselect/Makefile
 		  dselect/methods/Makefile
 		  dselect/po/Makefile.in
-		  libcompat/Makefile
 		  lib/Makefile
+		  lib/compat/Makefile
+		  lib/dpkg/Makefile
+		  lib/dpkg/test/Makefile
 		  man/Makefile
-		  origins/Makefile
 		  po/Makefile.in
 		  scripts/Makefile
 		  scripts/po/Makefile.in

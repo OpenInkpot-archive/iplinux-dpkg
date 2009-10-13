@@ -2,7 +2,7 @@
  * dpkg-split - splitting and joining of multipart *.deb archives
  * info.c - information about split archives
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,8 +33,10 @@
 #include <ar.h>
 #include <ctype.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
+
 #include "dpkg-split.h"
 
 static unsigned long unsignedlong(const char *value, const char *fn, const char *what) {
@@ -39,7 +44,7 @@ static unsigned long unsignedlong(const char *value, const char *fn, const char 
   char *endp;
 
   r= strtoul(value,&endp,10);
-  if (*endp)
+  if (value == endp || *endp)
     ohshit(_("file `%.250s' is corrupt - bad digit (code %d) in %s"),fn,*endp,what);
   return r;
 }
@@ -53,7 +58,7 @@ static unsigned long parseheaderlength(const char *inh, size_t len,
   assert(sizeof(lintbuf) > len);
   memcpy(lintbuf,inh,len);
   lintbuf[len]= ' ';
-  *strchr(lintbuf,' ')= 0;
+  *strchr(lintbuf, ' ') = '\0';
   return unsignedlong(lintbuf,fn,what);
 }
 
@@ -67,7 +72,7 @@ static char *nextline(char **ripp, const char *fn, const char *what) {
     ohshit(_("file `%.250s' is corrupt - missing newline after %.250s"),fn,what);
   *ripp= newline+1;
   while (newline > rip && isspace(newline[-1])) newline--;
-  *newline= 0;
+  *newline = '\0';
   return rip;
 }
 
@@ -93,7 +98,8 @@ struct partinfo *read_info(FILE *partfile, const char *fn, struct partinfo *ir) 
   if (fread(&arh,1,sizeof(arh),partfile) != sizeof(arh)) rerreof(partfile,fn);
   if (memcmp(arh.ar_fmag,ARFMAG,sizeof(arh.ar_fmag)))
     ohshit(_("file `%.250s' is corrupt - bad magic at end of first header"),fn);
-  thisilen= parseheaderlength(arh.ar_size,sizeof(arh.ar_size),fn,"info length");
+  thisilen = parseheaderlength(arh.ar_size, sizeof(arh.ar_size), fn,
+                               _("info length"));
   if (thisilen >= readinfobuflen) {
     readinfobuflen= thisilen+1;
     readinfobuf= m_realloc(readinfobuf,readinfobuflen);
@@ -104,38 +110,40 @@ struct partinfo *read_info(FILE *partfile, const char *fn, struct partinfo *ir) 
     if (c != '\n')
       ohshit(_("file `%.250s' is corrupt - bad padding character (code %d)"),fn,c);
   }
-  readinfobuf[thisilen]= 0;
+  readinfobuf[thisilen] = '\0';
   if (memchr(readinfobuf,0,thisilen))
     ohshit(_("file `%.250s' is corrupt - nulls in info section"),fn);
 
   ir->filename= fn;
 
   rip= readinfobuf;
-  ir->fmtversion= nfstrsave(nextline(&rip,fn,"format version number"));
+  ir->fmtversion = nfstrsave(nextline(&rip, fn, _("format version number")));
   if (strcmp(ir->fmtversion,SPLITVERSION))
     ohshit(_("file `%.250s' is format version `%.250s' - you need a newer dpkg-split"),
            fn,ir->fmtversion);
 
-  ir->package= nfstrsave(nextline(&rip,fn,"package name"));
-  ir->version= nfstrsave(nextline(&rip,fn,"package version number"));
-  ir->md5sum= nfstrsave(nextline(&rip,fn,"package file MD5 checksum"));
-  if (strlen(ir->md5sum) != 32 ||
-      strspn(ir->md5sum,"0123456789abcdef") != 32)
+  ir->package = nfstrsave(nextline(&rip, fn, _("package name")));
+  ir->version = nfstrsave(nextline(&rip, fn, _("package version number")));
+  ir->md5sum = nfstrsave(nextline(&rip, fn, _("package file MD5 checksum")));
+  if (strlen(ir->md5sum) != MD5HASHLEN ||
+      strspn(ir->md5sum, "0123456789abcdef") != MD5HASHLEN)
     ohshit(_("file `%.250s' is corrupt - bad MD5 checksum `%.250s'"),fn,ir->md5sum);
 
-  ir->orglength= unsignedlong(nextline(&rip,fn,"total length"),fn,"total length");
-  ir->maxpartlen= unsignedlong(nextline(&rip,fn,"part offset"),fn,"part offset");
+  ir->orglength = unsignedlong(nextline(&rip, fn, _("total length")), fn,
+                               _("total length"));
+  ir->maxpartlen = unsignedlong(nextline(&rip, fn, _("part offset")), fn,
+                                _("part offset"));
   
-  partnums= nextline(&rip,fn,"part numbers");
+  partnums = nextline(&rip, fn, _("part numbers"));
   slash= strchr(partnums,'/');
   if (!slash) ohshit(_("file `%.250s' is corrupt - no slash between part numbers"),fn);
-  *slash++= 0;
+  *slash++ = '\0';
 
-  templong= unsignedlong(slash,fn,"number of parts");
+  templong = unsignedlong(slash, fn, _("number of parts"));
   if (templong <= 0 || templong > INT_MAX)
-    ohshit("file `%.250s' is corrupt - bad number of parts",fn);
+    ohshit(_("file '%.250s' is corrupt - bad number of parts"), fn);
   ir->maxpartn= templong;
-  templong= unsignedlong(partnums,fn,"parts number");
+  templong = unsignedlong(partnums, fn, _("parts number"));
   if (templong <= 0 || templong > ir->maxpartn)
     ohshit(_("file `%.250s' is corrupt - bad part number"),fn);
   ir->thispartn= templong;
@@ -146,7 +154,8 @@ struct partinfo *read_info(FILE *partfile, const char *fn, struct partinfo *ir) 
   if (strncmp(arh.ar_name,"data",4))
     ohshit(_("file `%.250s' is corrupt - second member is not data member"),fn);
 
-  ir->thispartlen= parseheaderlength(arh.ar_size,sizeof(arh.ar_size),fn,"data length");
+  ir->thispartlen = parseheaderlength(arh.ar_size, sizeof(arh.ar_size), fn,
+                                      _("data length"));
   ir->thispartoffset= (ir->thispartn-1)*ir->maxpartlen;
 
   if (ir->maxpartn != (ir->orglength+ir->maxpartlen-1)/ir->maxpartlen)
@@ -215,7 +224,9 @@ void do_info(const char *const *argv) {
   struct partinfo *pi, ps;
   FILE *part;
 
-  if (!*argv) badusage(_("--info requires one or more part file arguments"));
+  if (!*argv)
+    badusage(_("--%s requires one or more part file arguments"),
+             cipaction->olong);
   
   while ((thisarg= *argv++)) {
     part= fopen(thisarg,"r");
@@ -227,6 +238,6 @@ void do_info(const char *const *argv) {
     } else {
       printf(_("file `%s' is not an archive part\n"),thisarg);
     }
-    if (ferror(stdout)) werr("stdout");
+    m_output(stdout, _("<standard output>"));
   }
 }

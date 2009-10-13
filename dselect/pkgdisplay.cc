@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * pkgdisplay.cc - package list display
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -18,18 +18,18 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "pkglist.h"
 
@@ -62,10 +62,8 @@ const char
   *const prioritystrings[]=  { N_("Required"),
 			       N_("Important"),
 			       N_("Standard"),
-			       N_("Recommended"),
 			       N_("Optional"),
 			       N_("Extra"),
-			       N_("Contrib"),
 			       N_("!Bug!"),
 			       N_("Unclassified"),
 			       0 },
@@ -84,15 +82,13 @@ const char
   *const priorityabbrevs[]=  { N_("Req"),
 			       N_("Imp"),
 			       N_("Std"),
-			       N_("Rec"),
 			       N_("Opt"),
 			       N_("Xtr"),
-			       N_("Ctb"),
 			       N_("bUG"),
 			       N_("?") };
 
 const char statuschars[] = " -IUCWt*";
-const char eflagchars[]=     " R?#";
+const char eflagchars[] = " R";
 const char wantchars[]=     "n*=-_";
 
 /* These MUST be in the same order as the corresponding enums in pkglist.h */

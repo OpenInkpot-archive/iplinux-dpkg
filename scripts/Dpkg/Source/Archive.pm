@@ -1,4 +1,4 @@
-# Copyright 2008 Raphaël Hertzog <hertzog@debian.org>
+# Copyright © 2008 Raphaël Hertzog <hertzog@debian.org>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@ use warnings;
 use Dpkg::Source::Functions qw(erasedir fixperms);
 use Dpkg::Gettext;
 use Dpkg::IPC;
-use Dpkg::ErrorHandling qw(error syserr warning);
+use Dpkg::ErrorHandling;
 
 use POSIX;
 use File::Temp qw(tempdir);
@@ -45,7 +45,9 @@ sub create {
     $fork_opts{"to_handle"} = $self->open_for_write();
     $fork_opts{"from_pipe"} = \$self->{'tar_input'};
     # Call tar creation process
-    $fork_opts{'exec'} = [ 'tar', '--null', '-T', '-',
+    $fork_opts{"delete_env"} = [ "TAR_OPTIONS" ];
+    $fork_opts{'exec'} = [ 'tar', '--null', '-T', '-', '--numeric-owner',
+                           '--owner', '0', '--group', '0',
 			   @{$opts{"options"}}, '-cf', '-' ];
     $self->{"pid"} = fork_and_exec(%fork_opts);
     $self->{"cwd"} = getcwd();
@@ -53,7 +55,7 @@ sub create {
 
 sub _add_entry {
     my ($self, $file) = @_;
-    error("call create first") unless $self->{"tar_input"};
+    internerr("call create() first") unless $self->{"tar_input"};
     $file = $2 if ($file =~ /^\Q$self->{'cwd'}\E\/(.+)$/); # Relative names
     print({ $self->{'tar_input'} } "$file\0") ||
 	    syserr(_g("write on tar input"));
@@ -65,7 +67,7 @@ sub add_file {
     if ($self->{"chdir"}) {
         $testfile = File::Spec->catfile($self->{"chdir"}, $file);
     }
-    error("add_file() doesn't handle directories") if not -l $testfile and -d _;
+    internerr("add_file() doesn't handle directories") if not -l $testfile and -d _;
     $self->_add_entry($file);
 }
 
@@ -75,7 +77,7 @@ sub add_directory {
     if ($self->{"chdir"}) {
         $testfile = File::Spec->catdir($self->{"chdir"}, $file);
     }
-    error("add_directory() only handles directories") unless not -l $testfile and -d _;
+    internerr("add_directory() only handles directories") unless not -l $testfile and -d _;
     $self->_add_entry($file);
 }
 
@@ -116,6 +118,7 @@ sub extract {
     $fork_opts{"from_handle"} = $self->open_for_read();
 
     # Call tar extraction process
+    $fork_opts{"delete_env"} = [ "TAR_OPTIONS" ];
     $fork_opts{'exec'} = [ 'tar', '--no-same-owner', '--no-same-permissions',
                            @{$opts{"options"}}, '-xkf', '-' ];
     fork_and_exec(%fork_opts);

@@ -3,10 +3,15 @@
 SUBDIRS = methods po
 
 localedir = $(datadir)/locale
-INCLUDES = \
+pkgconfdir = $(sysconfdir)/@PACKAGE@
+
+AM_CPPFLAGS = \
 	-DLOCALEDIR=\"$(localedir)\" \
 	-DADMINDIR=\"$(admindir)\" -DLIBDIR=\"$(pkglibdir)\" \
-	-idirafter $(top_srcdir)/libcompat \
+	-DLOCALLIBDIR=\"/usr/local/lib/dpkg\" \
+	-idirafter $(top_srcdir)/lib/compat \
+	-iquote $(builddir) \
+	-I$(top_builddir) \
 	-I$(top_srcdir)/lib
 
 
@@ -14,6 +19,7 @@ bin_PROGRAMS = dselect
 
 dselect_SOURCES = \
 	dselect.h \
+	dselect-curses.h \
 	basecmds.cc \
 	baselist.cc \
 	basetop.cc \
@@ -35,10 +41,10 @@ dselect_SOURCES = \
 	pkgtop.cc
 
 dselect_LDADD = \
-	../libcompat/libcompat.a \
-	$(LIBINTL) \
 	$(CURSES_LIBS) \
-	../lib/libdpkg.a
+	../lib/dpkg/libdpkg.a \
+	../lib/compat/libcompat.a \
+	$(LIBINTL)
 
 
 EXTRA_DIST = keyoverride mkcurkeys.pl
@@ -46,10 +52,14 @@ CLEANFILES = curkeys.h
 
 curkeys.$(OBJEXT): curkeys.h
 curkeys.h: $(srcdir)/keyoverride $(srcdir)/mkcurkeys.pl
-	cursesfile=`echo '#include <ncursesw/curses.h>' | \
-		$(CC) -E - | grep 'curses.h' | head -n 1 | \
+	$(AM_V_GEN) cursesfile=`echo '#include "dselect-curses.h"' | \
+		$(CPP) -I$(top_builddir) -I $(srcdir) - | \
+		grep 'curses.h' | head -n 1 | \
 		sed -e 's/^[^"]*"//; s/".*$$//'`; \
 	if [ "$$cursesfile" = "" ]; then \
 		echo "can't find curses file"; exit 1; \
 	fi; \
 	perl $(srcdir)/mkcurkeys.pl $< $$cursesfile >$@
+
+install-data-local:
+	$(mkdir_p) $(DESTDIR)$(pkgconfdir)/dselect.cfg.d

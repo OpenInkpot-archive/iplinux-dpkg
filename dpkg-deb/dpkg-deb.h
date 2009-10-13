@@ -2,7 +2,7 @@
  * dpkg-deb - construction and deconstruction of *.deb archives
  * dpkg-deb.h - external definitions for this program
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -23,7 +23,7 @@
 #define DPKG_DEB_H
 
 typedef void dofunction(const char *const *argv);
-dofunction do_build NONRETURNING; 
+dofunction do_build DPKG_ATTR_NORET;
 dofunction do_contents, do_control, do_showinfo;
 dofunction do_info, do_field, do_extract, do_vextract, do_fsystarfile;
 
@@ -38,6 +38,21 @@ extern const char *compression;
 extern const char* showformat;
 extern enum compress_type compress_type;
 
+#define ARCHIVEVERSION		"2.0"
+
+#define BUILDCONTROLDIR		"DEBIAN"
+#define EXTRACTCONTROLDIR	BUILDCONTROLDIR
+
+/* Set BUILDOLDPKGFORMAT to 1 to build old-format archives by default. */
+#ifndef BUILDOLDPKGFORMAT
+#define BUILDOLDPKGFORMAT 0
+#endif
+
+#define OLDARCHIVEVERSION	"0.939000"
+
+#define OLDDEBDIR		"DEBIAN"
+#define OLDOLDDEBDIR		".DEBIAN"
+
 #define DEBMAGIC     "!<arch>\ndebian-binary   "
 #define ADMINMEMBER		"control.tar.gz  "
 #define ADMINMEMBER_COMPAT	"control.tar.gz/ "
@@ -51,5 +66,12 @@ extern enum compress_type compress_type;
 #define DATAMEMBER_COMPAT_CAT  	"data.tar/       "
 
 #define MAXFILENAME 2048
+#define MAXFIELDNAME 200
+
+#ifdef PATH_MAX
+# define INTERPRETER_MAX PATH_MAX
+#else
+# define INTERPRETER_MAX 1024
+#endif
 
 #endif /* DPKG_DEB_H */

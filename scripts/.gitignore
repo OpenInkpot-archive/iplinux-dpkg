@@ -1,5 +1,3 @@
-Makefile
-Makefile.in
 dpkg-architecture
 dpkg-buildpackage
 dpkg-checkbuilddeps
@@ -15,8 +13,6 @@ dpkg-scansources
 dpkg-shlibdeps
 dpkg-source
 dpkg-statoverride
+dpkg-vendor
 update-alternatives
-install-info
-install-info-stamp
-cleanup-info
-822-date
+t.tmp

@@ -2,7 +2,7 @@
  * dpkg-deb - construction and deconstruction of *.deb archives
  * extract.c - extracting archives
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -38,9 +41,12 @@
 #include <zlib.h>
 #endif
 
-#include <dpkg.h>
-#include <dpkg-deb.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/buffer.h>
+#include <dpkg/subproc.h>
+#include <dpkg/myopt.h>
+
+#include "dpkg-deb.h"
 
 static void movecontrolfiles(const char *thing) {
   char buf[200];
@@ -54,7 +60,7 @@ static void movecontrolfiles(const char *thing) {
   waitsubproc(c1,"sh -c mv foo/* &c",0);
 }
 
-static void readfail(FILE *a, const char *filename, const char *what) NONRETURNING;
+static void readfail(FILE *a, const char *filename, const char *what) DPKG_ATTR_NORET;
 static void readfail(FILE *a, const char *filename, const char *what) {
   if (ferror(a)) {
     ohshite(_("error reading %s from file %.255s"), what, filename);
@@ -76,7 +82,7 @@ parseheaderlength(const char *inh, size_t len,
   assert(sizeof(lintbuf) > len);
   memcpy(lintbuf,inh,len);
   lintbuf[len]= ' ';
-  *strchr(lintbuf,' ')= 0;
+  *strchr(lintbuf, ' ') = '\0';
   r = strtol(lintbuf, &endp, 10);
   if (r < 0)
     ohshit(_("file `%.250s' is corrupt - negative member length %zi"), fn, r);
@@ -111,7 +117,7 @@ void extracthalf(const char *debar, const char *directory,
   size_t ctrllennum, memberlen= 0;
   int dummy, l= 0;
   pid_t c1=0,c2,c3;
-  unsigned char *ctrlarea = NULL;
+  void *ctrlarea = NULL;
   int p1[2], p2[2];
   FILE *ar, *pi;
   struct stat stab;
@@ -136,7 +142,7 @@ void extracthalf(const char *debar, const char *directory,
       if (memcmp(arh.ar_fmag,ARFMAG,sizeof(arh.ar_fmag)))
         ohshit(_("file `%.250s' is corrupt - bad magic at end of first header"),debar);
       memberlen= parseheaderlength(arh.ar_size,sizeof(arh.ar_size),
-                                   debar,"member length");
+                                   debar, _("member length"));
       if (!header_done) {
         if (memcmp(arh.ar_name,"debian-binary   ",sizeof(arh.ar_name)) &&
 	    memcmp(arh.ar_name,"debian-binary/   ",sizeof(arh.ar_name)))
@@ -144,18 +150,18 @@ void extracthalf(const char *debar, const char *directory,
         infobuf= m_malloc(memberlen+1);
         if (fread(infobuf,1, memberlen + (memberlen&1), ar) != memberlen + (memberlen&1))
           readfail(ar,debar,_("header info member"));
-        infobuf[memberlen]= 0;
+        infobuf[memberlen] = '\0';
         cur= strchr(infobuf,'\n');
         if (!cur) ohshit(_("archive has no newlines in header"));
-        *cur= 0;
+        *cur = '\0';
         cur= strchr(infobuf,'.');
         if (!cur) ohshit(_("archive has no dot in version number"));
-        *cur= 0;
+        *cur = '\0';
         if (strcmp(infobuf,"2"))
           ohshit(_("archive version %.250s not understood, get newer dpkg-deb"), infobuf);
         *cur= '.';
         strncpy(versionbuf,infobuf,sizeof(versionbuf));
-        versionbuf[sizeof(versionbuf)-1]= 0;
+        versionbuf[sizeof(versionbuf) - 1] = '\0';
         header_done= 1;
       } else if (arh.ar_name[0] == '_') {
           /* Members with `_' are noncritical, and if we don't understand them
@@ -201,30 +207,33 @@ void extracthalf(const char *debar, const char *directory,
       }
     }
 
-    if (admininfo >= 2)
-      if (printf(_(" new debian package, version %s.\n"
-                 " size %ld bytes: control archive= %zi bytes.\n"),
-                 versionbuf, (long)stab.st_size, ctrllennum) == EOF ||
-          fflush(stdout)) werr("stdout");
-    
+    if (admininfo >= 2) {
+      printf(_(" new debian package, version %s.\n"
+               " size %ld bytes: control archive= %zi bytes.\n"),
+             versionbuf, (long)stab.st_size, ctrllennum);
+      m_output(stdout, _("<standard output>"));
+    }
   } else if (!strncmp(versionbuf,"0.93",4) &&
              sscanf(versionbuf,"%f%c%d",&versionnum,&nlc,&dummy) == 2 &&
              nlc == '\n') {
     
     oldformat= 1;
-    l= strlen(versionbuf); if (l && versionbuf[l-1]=='\n') versionbuf[l-1]=0;
+    l = strlen(versionbuf);
+    if (l && versionbuf[l - 1] == '\n')
+      versionbuf[l - 1] = '\0';
     if (!fgets(ctrllenbuf,sizeof(ctrllenbuf),ar))
       readfail(ar, debar, _("control information length"));
     if (sscanf(ctrllenbuf,"%zi%c%d",&ctrllennum,&nlc,&dummy) !=2 || nlc != '\n')
       ohshit(_("archive has malformatted control length `%s'"), ctrllenbuf);
 
-    if (admininfo >= 2)
-      if (printf(_(" old debian package, version %s.\n"
-                 " size %ld bytes: control archive= %zi, main archive= %ld.\n"),
-                 versionbuf, (long)stab.st_size, ctrllennum,
-                 (long) (stab.st_size - ctrllennum - strlen(ctrllenbuf) - l)) == EOF ||
-          fflush(stdout)) werr("stdout");
-    
+    if (admininfo >= 2) {
+      printf(_(" old debian package, version %s.\n"
+               " size %ld bytes: control archive= %zi, main archive= %ld.\n"),
+             versionbuf, (long)stab.st_size, ctrllennum,
+             (long) (stab.st_size - ctrllennum - strlen(ctrllenbuf) - l));
+      m_output(stdout, _("<standard output>"));
+    }
+
     ctrlarea = m_malloc(ctrllennum);
 
     errno=0; if (fread(ctrlarea,1,ctrllennum,ar) != ctrllennum)
@@ -233,10 +242,9 @@ void extracthalf(const char *debar, const char *directory,
   } else {
     
     if (!strncmp(versionbuf,"!<arch>",7)) {
-      if (fprintf(stderr,
-                  _("dpkg-deb: file looks like it might be an archive which has been\n"
-                  "dpkg-deb:    corrupted by being downloaded in ASCII mode\n"))
-          == EOF) werr("stderr");
+      fprintf(stderr,
+              _("dpkg-deb: file looks like it might be an archive which has been\n"
+                "dpkg-deb:    corrupted by being downloaded in ASCII mode\n"));
     }
 
     ohshit(_("`%.255s' is not a debian format archive"),debar);
@@ -303,11 +311,15 @@ void extracthalf(const char *debar, const char *directory,
   if (taroption) {
     if (!(c3= m_fork())) {
       char buffer[30+2];
-      if(strlen(taroption) > 30) internerr(taroption);
+      if (strlen(taroption) > 30)
+        internerr("taroption is too long '%s'", taroption);
       strcpy(buffer, taroption);
       strcat(buffer, "f");
       m_dup2(p2[0],0);
       close(p2[0]);
+
+      unsetenv("TAR_OPTIONS");
+
       execlp(TAR, "tar", buffer, "-", NULL);
       ohshite(_("failed to exec tar"));
     }
@@ -315,8 +327,9 @@ void extracthalf(const char *debar, const char *directory,
     waitsubproc(c3,"tar",0);
   }
   
-  waitsubproc(c2,"<decompress>",PROCPIPE);
-  if (c1 != -1) waitsubproc(c1,"paste",0);
+  waitsubproc(c2, _("<decompress>"), PROCPIPE);
+  if (c1 != -1)
+    waitsubproc(c1, _("paste"), 0);
   if (oldformat && admininfo) {
     if (versionnum == 0.931F) {
       movecontrolfiles(OLDOLDDEBDIR);

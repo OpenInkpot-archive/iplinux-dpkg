@@ -4,6 +4,9 @@
 # the current maintainer's name in their preferred form and contact
 # e-mail address.
 
+# Asturian - Marcos Alvarez Costales <marcos.alvarez.costales@gmail.com>
+ast
+
 # Bosnian - Safir Šećerović <sapphire@linux.org.ba>
 bs
 
@@ -24,6 +27,9 @@ dz
 
 # Greek (Hellenic) - George Papamichelakis <george@step.gr>
 el
+
+# Esperanto - Felipe Castro <fefcas@gmail.com>
+eo
 
 # Spanish - Javier Fernández-Sanguino Peña <jfs@debian.org>
 es
@@ -97,10 +103,10 @@ ro
 # Russian - Yuri Kozlov <yuray@id.ru>
 ru
 
-# Slovak - Roman Benko <benco@acid.sk>
+# Slovak - Ivan Masár <helix84@centrum.sk>
 sk
 
-# Swedish - Peter Karlsson <peterk@debian.org>
+# Swedish - Peter Krefting <peterk@debian.org>
 sv
 
 # Thai - Theppitak Karoonboonyanan <thep@linux.thai.net>

@@ -1,33 +1,71 @@
-# Copyright © 2008 Guillem Jover <guillem@debian.org>
+# Copyright © 2008, 2009 Guillem Jover <guillem@debian.org>
 
 # DPKG_FUNC_VA_COPY
 # -----------------
 # Define HAVE_VA_COPY if we have va_copy, fail if they can't be assigned
 AC_DEFUN([DPKG_FUNC_VA_COPY],
 [AC_CACHE_CHECK([for va_copy], [dpkg_cv_va_copy],
-[AC_TRY_RUN(
-[#include <stdarg.h>
-main() {
+	[AC_RUN_IFELSE([AC_LANG_SOURCE(
+[[#include <stdarg.h>
+int main()
+{
 va_list v1, v2;
 va_copy (v1, v2);
 exit (0);
-}],
+}
+	]])],
 	[dpkg_cv_va_copy=yes],
+	[dpkg_cv_va_copy=no],
 	[dpkg_cv_va_copy=no])])
 AS_IF([test "x$dpkg_cv_va_copy" = "xyes"],
 	[AC_DEFINE([HAVE_VA_COPY], 1,
-		  [Define to 1 if the `va_copy' macro exists])],
-	[AC_CACHE_CHECK([for va_list assignment by copy],
-		       [dpkg_cv_va_list_copy],
-[AC_TRY_COMPILE(
-[#include <stdarg.h>
-],
-[va_list v1, v2;
-v1 = v2;
-],
-		       [dpkg_cv_va_list_copy=yes],
-		       [dpkg_cv_va_list_copy=no])])])
+	           [Define to 1 if the 'va_copy' macro exists])])
 ])# DPKG_FUNC_VA_COPY
+
+# DPKG_FUNC_C99_SNPRINTF
+# -----------------------
+# Define HAVE_C99_SNPRINTF if we have C99 snprintf family semantics
+AC_DEFUN([DPKG_FUNC_C99_SNPRINTF],
+[AC_CACHE_CHECK([for C99 snprintf functions], [dpkg_cv_c99_snprintf],
+	[AC_RUN_IFELSE([AC_LANG_SOURCE([[
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+int test_vsnprintf(const char *fmt, ...)
+{
+	int n;
+	va_list ap;
+
+	va_start(ap, fmt);
+	n = vsnprintf(NULL, 0, fmt, ap);
+	va_end(ap);
+
+	return n;
+}
+int main()
+{
+	int n;
+
+	n = snprintf(NULL, 0, "format %s %d", "string", 10);
+	if (n != strlen("format string 10"))
+		return 1;
+
+	n = test_vsnprintf("format %s %d", "string", 10);
+	if (n != strlen("format string 10"))
+		return 1;
+
+	return 0;
+}
+	]])],
+	[dpkg_cv_c99_snprintf=yes],
+	[dpkg_cv_c99_snprintf=no],
+	[dpkg_cv_c99_snprintf=no])])
+AS_IF([test "x$dpkg_cv_c99_snprintf" = "xyes"],
+	[AC_DEFINE([HAVE_C99_SNPRINTF], 1,
+	           [Define to 1 if the 'snprintf' family is C99 conformant])],
+	)
+AM_CONDITIONAL(HAVE_C99_SNPRINTF, [test "x$dpkg_cv_c99_snprintf" = "xyes"])
+])# DPKG_FUNC_C99_SNPRINTF
 
 # DPKG_CHECK_COMPAT_FUNCS(LIST)
 # -----------------------

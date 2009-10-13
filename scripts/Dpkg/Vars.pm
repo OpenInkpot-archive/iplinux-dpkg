@@ -1,4 +1,4 @@
-# Copyright 2007 Raphaël Hertzog <hertzog@debian.org>
+# Copyright © 2007 Raphaël Hertzog <hertzog@debian.org>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,11 +19,10 @@ package Dpkg::Vars;
 use strict;
 use warnings;
 
-use Dpkg::ErrorHandling qw(error);
+use Dpkg::ErrorHandling;
 use Dpkg::Gettext;
 
-use Exporter;
-our @ISA = qw(Exporter);
+use base qw(Exporter);
 our @EXPORT = qw($sourcepackage set_source_package);
 
 our $sourcepackage;

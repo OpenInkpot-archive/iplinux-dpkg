@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * curkeys.cc - list of ncurses keys for name <-> key mapping
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,11 +19,11 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-extern "C" {
 #include <config.h>
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <compat.h>
+
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "bindings.h"
 

@@ -2,7 +2,7 @@
  * dpkg-deb - construction and deconstruction of *.deb archives
  * main.c - main program
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -34,33 +37,42 @@
 #include <ctype.h>
 #include <assert.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#if HAVE_LOCALE_H
+#include <locale.h>
+#endif
+
+#include <dpkg/macros.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
 
 #include "dpkg-deb.h"
 
 const char* showformat	= "${Package}\t${Version}\n";
 
-void
-printversion(void)
+static void
+printversion(const struct cmdinfo *cip, const char *value)
 {
-  if (printf(_("Debian `%s' package archive backend version %s.\n"),
-	     BACKEND, DPKG_VERSION_ARCH) < 0) werr("stdout");
-  if (printf(_("This is free software; see the GNU General Public License version 2 or\n"
-	       "later for copying conditions. There is NO warranty.\n"
-	       "See %s --license for copyright and license details.\n"),
-	     BACKEND) < 0) werr("stdout");
+  printf(_("Debian `%s' package archive backend version %s.\n"),
+         BACKEND, DPKG_VERSION_ARCH);
+  printf(_(
+"This is free software; see the GNU General Public License version 2 or\n"
+"later for copying conditions. There is NO warranty.\n"
+"See %s --license for copyright and license details.\n"), BACKEND);
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
 }
 
-void
-usage(void)
+static void
+usage(const struct cmdinfo *cip, const char *value)
 {
-  if (printf(_(
+  printf(_(
 "Usage: %s [<option> ...] <command>\n"
-"\n"), BACKEND) < 0) werr("stdout");
+"\n"), BACKEND);
 
-  if (printf(_(
+  printf(_(
 "Commands:\n"
 "  -b|--build <directory> [<deb>]   Build an archive.\n"
 "  -c|--contents <deb>              List contents.\n"
@@ -71,21 +83,21 @@ usage(void)
 "  -x|--extract <deb> <directory>   Extract files.\n"
 "  -X|--vextract <deb> <directory>  Extract & list files.\n"
 "  --fsys-tarfile <deb>             Output filesystem tarfile.\n"
-"\n")) < 0) werr("stdout");
+"\n"));
 
-  if (printf(_(
+  printf(_(
 "  -h|--help                        Show this help message.\n"
 "  --version                        Show the version.\n"
 "  --license|--licence              Show the copyright licensing terms.\n"
-"\n")) < 0) werr("stdout");
+"\n"));
 
-  if (printf(_(
+  printf(_(
 "<deb> is the filename of a Debian format archive.\n"
 "<cfile> is the name of an administrative file component.\n"
 "<cfield> is the name of a field in the main `control' file.\n"
-"\n")) < 0) werr("stdout");
+"\n"));
 
-  if (printf(_(
+  printf(_(
 "Options:\n"
 "  --showformat=<format>            Use alternative format for --show.\n"
 "  -D                               Enable debugging output.\n"
@@ -95,23 +107,26 @@ usage(void)
 "  -z#                              Set the compression level when building.\n"
 "  -Z<type>                         Set the compression type used when building.\n"
 "                                     Allowed values: gzip, bzip2, lzma, none.\n"
-"\n")) < 0) werr("stdout");
+"\n"));
 
-  if (printf(_(
+  printf(_(
 "Format syntax:\n"
 "  A format is a string that will be output for each package. The format\n"
 "  can include the standard escape sequences \\n (newline), \\r (carriage\n"
 "  return) or \\\\ (plain backslash). Package information can be included\n"
 "  by inserting variable references to package fields using the ${var[;width]}\n"
 "  syntax. Fields will be right-aligned unless the width is negative in which\n"
-"  case left alignment will be used.\n")) < 0) werr("stdout");
+"  case left alignment will be used.\n"));
 
-  if (printf(_(
+  printf(_(
 "\n"
 "Use `dpkg' to install and remove packages from your system, or\n"
 "`dselect' or `aptitude' for user-friendly package management.  Packages\n"
-"unpacked using `dpkg-deb --extract' will be incorrectly installed !\n")) < 0)
-    werr("stdout");
+"unpacked using `dpkg-deb --extract' will be incorrectly installed !\n"));
+
+  m_output(stdout, _("<standard output>"));
+
+  exit(0);
 }
 
 const char thisname[]= BACKEND;
@@ -160,8 +175,8 @@ static const struct cmdinfo cmdinfos[]= {
   { "compression",   'z', 1, NULL,           &compression, NULL,          1 },
   { "compress_type", 'Z', 1, NULL,           NULL,         setcompresstype  },
   { "showformat",    0,   1, NULL,           &showformat,  NULL             },
-  { "help",          'h', 0, NULL,           NULL,         helponly         },
-  { "version",       0,   0, NULL,           NULL,         versiononly      },
+  { "help",          'h', 0, NULL,           NULL,         usage            },
+  { "version",       0,   0, NULL,           NULL,         printversion     },
   /* UK spelling. */
   { "licence",       0,   0, NULL,           NULL,         showcopyright    },
   /* US spelling. */
@@ -174,7 +189,7 @@ static void setaction(const struct cmdinfo *cip, const char *value) {
     badusage(_("conflicting actions -%c (--%s) and -%c (--%s)"),
              cip->oshort, cip->olong, cipaction->oshort, cipaction->olong);
   cipaction= cip;
-  assert((int)(cip-cmdinfos) < (int)(sizeof(dofunctions)*sizeof(dofunction*)));
+  assert((int)(cip - cmdinfos) < (int)(sizeof_array(dofunctions)));
   action= dofunctions[cip-cmdinfos];
 }
 
@@ -195,12 +210,18 @@ int main(int argc, const char *const *argv) {
   jmp_buf ejbuf;
 
   setlocale(LC_NUMERIC, "POSIX");
-  standard_startup(&ejbuf, argc, &argv, NULL, NULL, cmdinfos);
+  setlocale(LC_ALL, "");
+  bindtextdomain(PACKAGE, LOCALEDIR);
+  textdomain(PACKAGE);
+
+  standard_startup(&ejbuf);
+  myopt(&argv, cmdinfos);
+
   if (!cipaction) badusage(_("need an action option"));
 
   unsetenv("GZIP");
   action(argv);
-  standard_shutdown(NULL);
+  standard_shutdown();
   exit(0);
 }
 

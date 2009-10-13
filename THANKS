@@ -17,10 +17,12 @@ Bart Martens <bart.martens@advalvas.be>
 Bastian Kleineidam <calvin@debian.org>
 Ben Collins <bcollins@debian.org>
 Ben Pfaff <blp@cs.stanford.edu>
+Bill Allombert <ballombe@debian.org>
 Branden Robinson <branden@debian.org>
 Branko Lankester
 Brian M. Carlson <sandals@crustytoothpaste.ath.cx>
 Bruce Perens <bruce@pixar.com>
+Bruce Sass <bmsass@shaw.ca>
 Carl Streeter <streeter@cae.wisc.edu>
 Carlos Laviola <claviola@brfree.com.br>
 Carlos Z.F. Liu <carlosliu@users.sourceforge.net>
@@ -35,6 +37,7 @@ Colin Plumb <colin@nyx.net>
 Colin Watson <cjwatson@debian.org>
 Dafydd Harries <daf@muse.19inch.net>
 Dan Gohman <gohmandj@mrs.umn.edu>
+Daniel Hahler <debian-bugs@thequod.de>
 Daniel Jacobowitz <dan@debian.org>
 Daniel Leidert <daniel.leidert@wgdd.de>
 Daniel Nylander <yeager@lidkoping.net>
@@ -76,6 +79,7 @@ Jeroen van Wolffelaar <jeroen@wolffelaar.nl>
 Jim Pick <jim@jimpick.com>
 Jim Van Zandt <jrv@vanzandt.mv.com>
 Jiří Paleček <jpalecek@web.de>
+Joachim Breitner <mail@joachim-breitner.de>
 Joel Klecker <jk@espy.org>
 Joey Hess <joeyh@debian.org>
 Johannes Veser <veser@gmx.de>
@@ -108,6 +112,7 @@ Marcel Toele <mtoele@kern.nl>
 Marco d'Itri <md@linux.it>
 Marcus Brinkmann <brinkmd@debian.org> 
 Mark Rosenstand <mark@borkware.net>
+Martin Koeppe <mkoeppe@gmx.de>
 Masato Taruishi <taru@debian.or.jp>
 Mathias Weidner <mathias@weidner.in-bad-schmiedeberg.de>
 Matt Kraai <kraai@ftbfs.org>
@@ -118,6 +123,7 @@ Michael Alan Dorman <mdorman@calder.med.miami.edu>
 Michael Shields <shields@crosslink.net>
 Michael Sobolev <mss@transas.com>
 Michael Vogt <mvo@ubuntu.com>
+Michel Lespinasse <walken@zoy.org>
 Miguel Figueiredo <elmig@debianpt.org>
 Miquel van Smoorenburg <miquels@cistron.nl>
 Miroslav Kure <kurem@debian.cz>
@@ -127,11 +133,12 @@ Nicolas Bonifas
 Nicolas François <nicolas.francois@centraliens.net>
 Nicolás Lichtmaier <nick@debian.org>
 Nils Rennebarth <nils@debian.org>
-Peter Karlsson <peterk@debian.org>
+Peter Krefting <peterk@debian.org>
 Peter Mann <Peter.Mann@tuke.sk>
 Peter van Dijk <peter@dataloss.nl>
 Petr Cech <cech@atrey.karlin.mff.cuni.cz>
 Philippe Batailler <pbatailler@teaser.fr>
+Pierre Habouzit <madcoder@debian.org>
 Piotr Engelking <inkerman42@gmail.com>
 Piotr Roszatycki <dexter@fnet.pl>
 Rakesh 'arky' Ambati <rakesh_ambati@yahoo.com>
@@ -156,6 +163,7 @@ Steve Langasek <vorlon@debian.org>
 Sven Joachim <svenjoac@gmx.de>
 Sven Rudolph <sr1@loom.sax.de>
 Thomas Morin <thomas.morin@enst-bretagne.fr>
+Timothy G Abbott <tabbott@MIT.EDU>
 Tom Lees <tom@lpsg.demon.co.uk>
 Tomas Pospisek <tpo_deb@sourcepole.ch>
 Topi Miettinen <Topi.Miettinen@nic.fi>

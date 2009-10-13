@@ -10,7 +10,7 @@ CFLAGS = -g $(WFLAGS)
 CXXFLAGS = -g $(WFLAGS)
 
 # Disable optimisations if ‘noopt’ found in $DEB_BUILD_OPTIONS
-ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+ifneq (,$(filter noopt,$(DEB_BUILD_OPTIONS)))
 	CFLAGS += -O0
 	CXXFLAGS += -O0
 else
@@ -62,6 +62,7 @@ build-tree/config.status: configure
 	install -d build-tree
 	cd build-tree && ../configure $(confflags) \
 		CFLAGS="$(CFLAGS)" CXXFLAGS="$(CXXFLAGS)" \
+		--disable-silent-rules \
 		--prefix=/usr \
 		--mandir=\$${datadir}/man \
 		--infodir=\$${datadir}/info \
@@ -106,6 +107,7 @@ binary-arch: control install
 
 	dh_install --sourcedir=debian/tmp -a
 ifeq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
+	dh_installcron -a
 	dh_installlogrotate -a
 endif
 
@@ -119,7 +121,7 @@ endif
 
 ifeq (,$(findstring target, $(DEB_BUILD_OPTIONS)))
 ifneq (,$(findstring nodocs,$(DEB_BUILD_OPTIONS)))
-	dh_installchangelogs -a ChangeLog
+	dh_installchangelogs -a ChangeLog*
 	dh_installdocs -a
 endif
 endif
@@ -133,6 +135,8 @@ ifeq (,$(findstring target, $(DEB_BUILD_OPTIONS)))
 		       debian/dselect/usr/share/lintian/overrides/dselect
 endif
 
+	dh_link -a
+	dh_lintian -a
 ifneq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
 	dh_strip -a
 endif
@@ -152,9 +156,12 @@ binary-indep: control install
 
 ifeq (,$(findstring target, $(DEB_BUILD_OPTIONS)))
 ifneq (,$(findstring nodocs,$(DEB_BUILD_OPTIONS)))
-	dh_installchangelogs -i ChangeLog
+	dh_installchangelogs -i ChangeLog*
 	dh_installdocs -i
 endif
+	dh_installcron -i
+	dh_link -i
+	dh_lintian -i
 endif
 
 	install -d debian/dpkg-dev/usr/share/lintian/overrides
@@ -180,6 +187,7 @@ clean: clean-tree unpatch
 clean-tree:
 	dh_testdir
 
+	[ ! -f Makefile ] || make distclean
 	rm -rf build-tree
 	dh_clean
 

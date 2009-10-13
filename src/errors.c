@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * main.c - main program
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,6 +19,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -33,14 +36,15 @@
 #include <limits.h>
 #include <ctype.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
 
 #include "main.h"
 
 int abort_processing = 0;
-int nerrs= 0;
+
+static int nerrs = 0;
 
 struct error_report {
   struct error_report *next;
@@ -89,23 +93,27 @@ int reportbroken_retexitstatus(void) {
   return nerrs ? 1 : 0;
 }
 
-int skip_due_to_hold(struct pkginfo *pkg) {
-  if (pkg->want != want_hold) return 0;
+bool
+skip_due_to_hold(struct pkginfo *pkg)
+{
+  if (pkg->want != want_hold)
+    return false;
   if (fc_hold) {
-    fprintf(stderr, _("Package %s was on hold, processing it anyway as you request\n"),
+    fprintf(stderr, _("Package %s was on hold, processing it anyway as you requested\n"),
             pkg->name);
-    return 0;
+    return false;
   }
   printf(_("Package %s is on hold, not touching it.  Use --force-hold to override.\n"),
          pkg->name);
-  return 1;
+  return true;
 }
 
 void forcibleerr(int forceflag, const char *fmt, ...) {
   va_list al;
   va_start(al,fmt);
   if (forceflag) {
-    fputs(_("dpkg - warning, overriding problem because --force enabled:\n "),stderr);
+    warning(_("overriding problem because --force enabled:"));
+    fputc(' ', stderr);
     vfprintf(stderr,fmt,al);
     fputc('\n',stderr);
   } else {

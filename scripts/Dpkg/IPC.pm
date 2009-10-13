@@ -1,5 +1,5 @@
-# Copyright 2008 Raphaël Hertzog <hertzog@debian.org>
-# Copyright 2008 Frank Lichtenheld <djpig@debian.org>
+# Copyright © 2008-2009 Raphaël Hertzog <hertzog@debian.org>
+# Copyright © 2008 Frank Lichtenheld <djpig@debian.org>
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,11 +20,10 @@ package Dpkg::IPC;
 use strict;
 use warnings;
 
-use Dpkg::ErrorHandling qw(error syserr subprocerr);
+use Dpkg::ErrorHandling;
 use Dpkg::Gettext;
 
-use Exporter;
-our @ISA = qw(Exporter);
+use base qw(Exporter);
 our @EXPORT = qw(fork_and_exec wait_child);
 
 =head1 NAME
@@ -102,6 +101,14 @@ Scalar. If containing a true value, wait_child() will be called before
 returning. The return value will of fork_and_exec() will be a true value,
 but not the pid.
 
+=item nocheck
+
+Scalar. Option of the wait_child() call.
+
+=item timeout
+
+Scalar. Option of the wait_child() call.
+
 =item chdir
 
 Scalar. The child process will chdir in the indicated directory before
@@ -124,7 +131,7 @@ listed in the array before calling exec.
 sub _sanity_check_opts {
     my (%opts) = @_;
 
-    error("exec parameter is mandatory in fork_and_exec()")
+    internerr("exec parameter is mandatory in fork_and_exec()")
 	unless $opts{"exec"};
 
     my $to = my $error_to = my $from = 0;
@@ -133,11 +140,11 @@ sub _sanity_check_opts {
 	$error_to++ if $opts{"error_to_$_"};
 	$from++ if $opts{"from_$_"};
     }
-    error("not more than one of to_* parameters is allowed")
+    internerr("not more than one of to_* parameters is allowed")
 	if $to > 1;
-    error("not more than one of error_to_* parameters is allowed")
+    internerr("not more than one of error_to_* parameters is allowed")
 	if $error_to > 1;
-    error("not more than one of from_* parameters is allowed")
+    internerr("not more than one of from_* parameters is allowed")
 	if $from > 1;
 
     foreach (qw(to_string error_to_string from_string
@@ -145,16 +152,21 @@ sub _sanity_check_opts {
     {
 	if (exists $opts{$_} and
 	    (!ref($opts{$_}) or ref($opts{$_}) ne 'SCALAR')) {
-	    error("parameter $_ must be a scalar reference");
+	    internerr("parameter $_ must be a scalar reference");
 	}
     }
 
+    if (exists $opts{"timeout"} and defined($opts{"timeout"}) and
+        $opts{"timeout"} !~ /^\d+$/) {
+	internerr("parameter timeout must be an integer");
+    }
+
     if (exists $opts{"env"} and ref($opts{"env"}) ne 'HASH') {
-	error("parameter env must be a hash reference");
+	internerr("parameter env must be a hash reference");
     }
 
     if (exists $opts{"delete_env"} and ref($opts{"delete_env"}) ne 'ARRAY') {
-	error("parameter delete_env must be an array reference");
+	internerr("parameter delete_env must be an array reference");
     }
 
     return %opts;
@@ -169,7 +181,7 @@ sub fork_and_exec {
     } elsif (not ref($opts{"exec"})) {
 	push @prog, $opts{"exec"};
     } else {
-	error(_g("invalid exec parameter in fork_and_exec()"));
+	internerr("invalid exec parameter in fork_and_exec()");
     }
     my ($from_string_pipe, $to_string_pipe, $error_to_string_pipe);
     if ($opts{"to_string"}) {
@@ -249,7 +261,7 @@ sub fork_and_exec {
 	# Execute the program
 	exec({ $prog[0] } @prog) or syserr(_g("exec %s"), "@prog");
     }
-    # Close handle that we can't use any more
+    # Close handle that we can't use any more
     close($opts{"from_handle"}) if exists $opts{"from_handle"};
     close($opts{"to_handle"}) if exists $opts{"to_handle"};
     close($opts{"error_to_handle"}) if exists $opts{"error_to_handle"};
@@ -267,7 +279,8 @@ sub fork_and_exec {
 	${$opts{"error_to_string"}} = readline($error_to_string_pipe);
     }
     if ($opts{"wait_child"}) {
-	wait_child($pid, cmdline => "@prog");
+	wait_child($pid, nocheck => $opts{"nocheck"},
+                   timeout => $opts{"timeout"}, cmdline => "@prog");
 	return 1;
     }
 
@@ -297,6 +310,11 @@ If true do not check the return status of the child (and thus
 do not fail it it has been killed or if it exited with a
 non-zero return code).
 
+=item timeout
+
+Set a maximum time to wait for the process, after that fail
+with an error message.
+
 =back
 
 =cut
@@ -304,8 +322,20 @@ non-zero return code).
 sub wait_child {
     my ($pid, %opts) = @_;
     $opts{"cmdline"} ||= _g("child process");
-    error(_g("no PID set, cannot wait end of process")) unless $pid;
-    $pid == waitpid($pid, 0) or syserr(_g("wait for %s"), $opts{"cmdline"});
+    internerr("no PID set, cannot wait end of process") unless $pid;
+    eval {
+        local $SIG{ALRM} = sub { die "alarm\n" };
+        alarm($opts{"timeout"}) if defined($opts{"timeout"});
+        $pid == waitpid($pid, 0) or syserr(_g("wait for %s"), $opts{"cmdline"});
+        alarm(0) if defined($opts{"timeout"});
+    };
+    if ($@) {
+        die $@ unless $@ eq "alarm\n";
+        error(ngettext("%s didn't complete in %d second",
+                       "%s didn't complete in %d seconds",
+                       $opts{"timeout"}),
+              $opts{"cmdline"}, $opts{"timeout"});
+    }
     unless ($opts{"nocheck"}) {
 	subprocerr($opts{"cmdline"}) if $?;
     }

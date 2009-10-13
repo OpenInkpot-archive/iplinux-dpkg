@@ -1,9 +1,8 @@
 #!/usr/bin/perl
 #
-# $Id$
-#
-# Copyright 1999 Roderick Schertler
-# Copyright 2002 Wichert Akkerman <wakkerma@debian.org>
+# Copyright © 1999 Roderick Schertler
+# Copyright © 2002 Wichert Akkerman <wakkerma@debian.org>
+# Copyright © 2006-2009 Guillem Jover <guillem@debian.org>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -31,6 +30,11 @@ use warnings;
 
 use Dpkg;
 use Dpkg::Gettext;
+use Dpkg::ErrorHandling;
+use Dpkg::Control;
+use Dpkg::Checksums;
+use Dpkg::Source::CompressedFile;
+use Dpkg::Compression;
 
 textdomain("dpkg-dev");
 
@@ -46,6 +50,7 @@ sub O_PRIORITY		() { 0 }
 sub O_SECTION		() { 1 }
 sub O_MAINT_FROM	() { 2 } # undef for non-specific, else listref
 sub O_MAINT_TO		() { 3 } # undef if there's no maint override
+my %Extra_Override;
 
 my %Priority = (
      'extra'		=> 1,
@@ -60,36 +65,19 @@ my %Priority = (
 my $Debug	= 0;
 my $No_sort	= 0;
 my $Src_override = undef;
+my $Extra_override_file = undef;
 
 my @Option_spec = (
     'debug!'		=> \$Debug,
     'help!'		=> \&usage,
     'no-sort|n'		=> \$No_sort,
     'source-override|s=s' => \$Src_override,
+    'extra-override|e=s' => \$Extra_override_file,
     'version'		=> \&version,
 );
 
 sub debug {
     print @_, "\n" if $Debug;
-}
-
-sub xwarndie_mess {
-    my @mess = ("$progname: ", @_);
-    $mess[$#mess] =~ s/:$/: $!\n/;	# XXX loses if it's really /:\n/
-    return @mess;
-}
-
-sub xdie {
-    die xwarndie_mess @_;
-}
-
-sub xwarn {
-    warn xwarndie_mess @_;
-    $Exit ||= 1;
-}
-
-sub xwarn_noerror {
-    warn xwarndie_mess @_;
 }
 
 sub version {
@@ -103,6 +91,8 @@ sub usage {
 
 Options:
   -n, --no-sort            don't sort by package before outputting.
+  -e, --extra-override <file>
+                           use extra override file.
   -s, --source-override <file>
                            use file for additional source overrides, default
                            is regular override file with .src appended.
@@ -152,30 +142,28 @@ sub load_override {
     my $file = shift;
     local $_;
 
-    open OVERRIDE, $file or xdie sprintf(_g("can't read override file %s:"), $file);
-    while (<OVERRIDE>) {
+    my $comp_file = Dpkg::Source::CompressedFile->new(filename => $file);
+    my $override_fh = $comp_file->open_for_read();
+    while (<$override_fh>) {
     	s/#.*//;
 	next if /^\s*$/;
 	s/\s+$//;
 
 	my @data = split ' ', $_, 4;
 	unless (@data == 3 || @data == 4) {
-	    xwarn_noerror sprintf(_g(
-	                      "invalid override entry at line %d (%d fields)"),
-	                          $., 0+@data)."\n";
+	    warning(_g("invalid override entry at line %d (%d fields)"),
+	            $., 0 + @data);
 	    next;
 	}
 	my ($package, $priority, $section, $maintainer) = @data;
 	if (exists $Override{$package}) {
-	    xwarn_noerror sprintf(_g(
-	                "ignoring duplicate override entry for %s at line %d"),
-	                          $package, $.)."\n";
+	    warning(_g("ignoring duplicate override entry for %s at line %d"),
+	            $package, $.);
 	    next;
 	}
 	if (!$Priority{$priority}) {
-	    xwarn_noerror sprintf(_g(
-	                "ignoring override entry for %s, invalid priority %s"),
-	                          $package, $priority)."\n";
+	    warning(_g("ignoring override entry for %s, invalid priority %s"),
+	            $package, $priority);
 	    next;
 	}
 
@@ -193,7 +181,8 @@ sub load_override {
 	    $Override{$package}[O_MAINT_TO] = $maintainer;
 	}
     }
-    close OVERRIDE or xdie _g("error closing override file:");
+    close($override_fh);
+    $comp_file->cleanup_after_open();
 }
 
 sub load_src_override {
@@ -205,197 +194,89 @@ sub load_src_override {
 	$file = $user_file;
     }
     elsif (defined $regular_file) {
-	$file = "$regular_file.src";
+        my $comp = get_compression_from_filename($regular_file);
+        if (defined($comp)) {
+	    $file = $regular_file;
+            $file =~ s/\.$comp_ext{$comp}$/.src.$comp_ext{$comp}/;
+        } else {
+	    $file = "$regular_file.src";
+        }
+        return unless -e $file;
     }
     else {
 	return;
     }
 
     debug "source override file $file";
-    unless (open SRC_OVERRIDE, $file) {
-	return if !defined $user_file;
-	xdie sprintf(_g("can't read source override file %s:"), $file);
-    }
-    while (<SRC_OVERRIDE>) {
+    my $comp_file = Dpkg::Source::CompressedFile->new(filename => $file);
+    my $override_fh = $comp_file->open_for_read();
+    while (<$override_fh>) {
     	s/#.*//;
 	next if /^\s*$/;
 	s/\s+$//;
 
 	my @data = split ' ', $_;
 	unless (@data == 2) {
-	    xwarn_noerror sprintf(_g(
-	               "invalid source override entry at line %d (%d fields)"),
-	                          $., 0+@data)."\n";
+	    warning(_g("invalid source override entry at line %d (%d fields)"),
+	            $., 0 + @data);
 	    next;
 	}
 
 	my ($package, $section) = @data;
 	my $key = "source/$package";
 	if (exists $Override{$key}) {
-	    xwarn_noerror sprintf(_g(
-	         "ignoring duplicate source override entry for %s at line %d"),
-	                          $package, $.)."\n";
+	    warning(_g("ignoring duplicate source override entry for %s at line %d"),
+	            $package, $.);
 	    next;
 	}
 	$Override{$key} = [];
 	$Override{$key}[O_SECTION] = $section;
     }
-    close SRC_OVERRIDE or xdie _g("error closing source override file:");
+    close($override_fh);
+    $comp_file->cleanup_after_open();
 }
 
-# Given FILENAME (for error reporting) and STRING, drop the PGP info
-# from the string and undo the encoding (if present) and return it.
+sub load_override_extra
+{
+    my $extra_override = shift;
+    my $comp_file = Dpkg::Source::CompressedFile->new(filename => $extra_override);
+    my $override_fh = $comp_file->open_for_read();
 
-sub de_pgp {
-    my ($file, $s) = @_;
-    if ($s =~ s/^-----BEGIN PGP SIGNED MESSAGE-----.*?\n\n//s) {
-	unless ($s =~ s/\n
-			-----BEGIN\040PGP\040SIGNATURE-----\n
-			.*?\n
-			-----END\040PGP\040SIGNATURE-----\n
-		    //xs) {
-	    xwarn_noerror sprintf(_g("%s has PGP start token but not end token"), $file)."\n";
-	    return;
-	}
-	$s =~ s/^- //mg;
+    while (<$override_fh>) {
+	s/\#.*//;
+	s/\s+$//;
+	next unless $_;
+
+	my ($p, $field, $value) = split(/\s+/, $_, 3);
+        $Extra_Override{$p}{$field} = $value;
     }
-    return $s;
+    close($override_fh);
+    $comp_file->cleanup_after_open();
 }
 
-# Load DSC-FILE and return its size, MD5 and translated (de-PGPed)
-# contents.
-
-sub read_dsc {
-    my $file = shift;
-    my ($size, $md5, $nread, $contents);
-
-    unless (open FILE, $file) {
-	xwarn_noerror sprintf(_g("can't read %s:"), $file);
-	return;
-    }
-
-    $size = -s FILE;
-    unless (defined $size) {
-	xwarn_noerror sprintf(_g("error doing fstat on %s:"), $file);
-	return;
-    }
-
-    $contents = '';
-    do {
-	$nread = read FILE, $contents, 16*1024, length $contents;
-	unless (defined $nread) {
-	    xwarn_noerror sprintf(_g("error reading from %s:"), $file);
-	    return;
-	}
-    } while $nread > 0;
-
-    # Rewind the .dsc file and feed it to md5sum as stdin.
-    my $pid = open MD5, '-|';
-    unless (defined $pid) {
-	xwarn_noerror _g("can't fork:");
-	return;
-    }
-    if (!$pid) {
-	open STDIN, '<&FILE' or xdie sprintf(_g("can't dup %s:"), $file);
-	seek STDIN, 0, 0     or xdie sprintf(_g("can't rewind %s:"), $file);
-	exec 'md5sum'        or xdie _g("can't exec md5sum:");
-    }
-    chomp($md5 = join '', <MD5>);
-    unless (close MD5) {
-	xwarn_noerror close_msg 'md5sum';
-	return;
-    }
-    $md5 =~ s/ *-$//; # Remove trailing spaces and -, to work with GNU md5sum
-    unless (length($md5) == 32 && $md5 !~ /[^\da-f]/i) {
-	xwarn_noerror sprintf(_g("invalid md5 output for %s (%s)"), $file, $md5)."\n";
-	return;
-    }
-
-    unless (close FILE) {
-	xwarn_noerror sprintf(_g("error closing %s:"), $file);
-	return;
-    }
-
-    $contents = de_pgp $file, $contents;
-    return unless defined $contents;
-
-    return $size, $md5, $contents;
-}
-
-# Given PREFIX and DSC-FILE, process the file and returning the source
-# package name and index record.
+# Given PREFIX and DSC-FILE, process the file and returns the fields.
 
 sub process_dsc {
     my ($prefix, $file) = @_;
-    my ($source, @binary, $priority, $section, $maintainer_override,
-	$dir, $dir_field, $dsc_field_start);
 
-    my ($size, $md5, $contents) = read_dsc $file or return;
+    # Parse ‘.dsc’ file.
+    my $fields = Dpkg::Control->new(type => CTRL_PKG_SRC);
+    $fields->parse($file);
+    $fields->set_options(type => CTRL_INDEX_SRC);
 
-    # Allow blank lines at the end of a file, because the other programs
-    # do.
-    $contents =~ s/\n\n+\Z/\n/;
+    # Get checksums
+    my $size;
+    my $sums = {};
+    getchecksums($file, $sums, \$size);
 
-    if ($contents =~ /^\n/ || $contents =~ /\n\n/) {
-	xwarn_noerror sprintf(_g("%s invalid (contains blank line)"), $file)."\n";
-	return;
-    }
+    my $source = $fields->{Source};
+    my @binary = split /\s*,\s*/, $fields->{Binary};
 
-    # Take the $contents and create a list of (possibly multi-line)
-    # fields.  Fields can be continued by starting the next line with
-    # white space.  The tricky part is I don't want to modify the data
-    # at all, so I can't just collapse continued fields.
-    #
-    # Implementation is to start from the last line and work backwards
-    # to the second.  If this line starts with space, append it to the
-    # previous line and undef it.  When done drop the undef entries.
-    my @line = split /\n/, $contents;
-    for (my $i = $#line; $i > 0; $i--) {
-    	if ($line[$i] =~ /^\s/) {
-	    $line[$i-1] .= "\n$line[$i]";
-	    $line[$i] = undef;
-	}
-    }
-    my @field = map { "$_\n" } grep { defined } @line;
+    error(_g("no binary packages specified in %s"), $file) unless (@binary);
 
-    # Extract information from the record.
-    for my $orig_field (@field) {
-	my $s = $orig_field;
-	$s =~ s/\s+$//;
-	$s =~ s/\n\s+/ /g;
-	unless ($s =~ s/^([^:\s]+):\s*//) {
-	    xwarn_noerror sprintf(_g("invalid field in %s: %s"), $file, $orig_field);
-	    return;
-	}
-	my ($key, $val) = (lc $1, $s);
-
-	# $source
-	if ($key eq 'source') {
-	    if (defined $source) {
-		xwarn_noerror sprintf(_g("duplicate source field in %s"), $file)."\n";
-		return;
-	    }
-	    if ($val =~ /\s/) {
-		xwarn_noerror sprintf(_g("invalid source field in %s"), $file)."\n";
-		return;
-	    }
-	    $source = $val;
-	    next;
-	}
-
-	# @binary
-	if ($key eq 'binary') {
-	    if (@binary) {
-		xwarn_noerror sprintf(_g("duplicate binary field in %s"), $file)."\n";
-		return;
-	    }
-	    @binary = split /\s*,\s*/, $val;
-	    unless (@binary) {
-		xwarn_noerror sprintf(_g("no binary packages specified in %s"), $file)."\n";
-		return;
-	    }
-	}
-    }
+    # Rename the source field to package.
+    $fields->{Package} = $fields->{Source};
+    delete $fields->{Source};
 
     # The priority for the source package is the highest priority of the
     # binary packages it produces.
@@ -405,106 +286,65 @@ sub process_dsc {
 	    ($Override{$b} ? $Priority{$Override{$b}[O_PRIORITY]} : 0)
 	} @binary;
     my $priority_override = $Override{$binary_by_priority[-1]};
-    $priority = $priority_override
+    my $priority = $priority_override
 			? $priority_override->[O_PRIORITY]
 			: undef;
+    $fields->{Priority} = $priority if defined $priority;
 
     # For the section override, first check for a record from the source
     # override file, else use the regular override file.
     my $section_override = $Override{"source/$source"} || $Override{$source};
-    $section = $section_override
+    my $section = $section_override
 			? $section_override->[O_SECTION]
 			: undef;
+    $fields->{Section} = $section if defined $section;
 
     # For the maintainer override, use the override record for the first
-    # binary.
-    $maintainer_override = $Override{$binary[0]};
+    # binary. Modify the maintainer if necessary.
+    my $maintainer_override = $Override{$binary[0]};
+    if ($maintainer_override && defined $maintainer_override->[O_MAINT_TO]) {
+        if (!defined $maintainer_override->[O_MAINT_FROM] ||
+            grep { $fields->{Maintainer} eq $_ }
+                @{ $maintainer_override->[O_MAINT_FROM] }) {
+            $fields->{Maintainer} = $maintainer_override->[O_MAINT_TO];
+        }
+    }
+
+    # Process extra override
+    if (exists $Extra_Override{$source}) {
+        my ($field, $value);
+        while(($field, $value) = each %{$Extra_Override{$source}}) {
+            $fields->{$field} = $value;
+        }
+    }
 
     # A directory field will be inserted just before the files field.
+    my $dir;
     $dir = ($file =~ s-(.*)/--) ? $1 : '';
     $dir = "$prefix$dir";
     $dir =~ s-/+$--;
     $dir = '.' if $dir eq '';
-    $dir_field .= "Directory: $dir\n";
+    $fields->{Directory} = $dir;
 
     # The files field will get an entry for the .dsc file itself.
-    $dsc_field_start = "Files:\n $md5 $size $file\n";
-
-    # Loop through @field, doing nececessary processing and building up
-    # @new_field.
-    my @new_field;
-    for (@field) {
-	# Rename the source field to package.
-    	s/^Source:/Package:/i;
-
-	# Override the user's priority field.
-	if (/^Priority:/i && defined $priority) {
-	    $_ = "Priority: $priority\n";
-	    undef $priority;
-	}
-
-	# Override the user's section field.
-	if (/^Section:/i && defined $section) {
-	    $_ = "Section: $section\n";
-	    undef $section;
-	}
-
-    	# Insert the directory line just before the files entry, and add
-	# the dsc file to the files list.
-    	if (defined $dir_field && s/^Files:\s*//i) {
-	    push @new_field, $dir_field;
-	    $dir_field = undef;
-	    $_ = " $_" if length;
-	    $_ = "$dsc_field_start$_";
-	}
-
-	# Modify the maintainer if necessary.
-	if ($maintainer_override
-		&& defined $maintainer_override->[O_MAINT_TO]
-		&& /^Maintainer:\s*(.*)\n/is) {
-	    my $maintainer = $1;
-	    $maintainer =~ s/\n\s+/ /g;
-	    if (!defined $maintainer_override->[O_MAINT_FROM]
-	    	    || grep { $maintainer eq $_ }
-			    @{ $maintainer_override->[O_MAINT_FROM] }){
-		$_ = "Maintainer: $maintainer_override->[O_MAINT_TO]\n";
-	    }
-	}
-    }
-    continue {
-	push @new_field, $_ if defined $_;
+    foreach my $alg (@check_supported) {
+        if ($alg eq "md5") {
+            $fields->{Files} =~ s/^\n/\n $sums->{$alg} $size $file\n/;
+        } else {
+            my $name = "Checksums-" . ucfirst($alg);
+            $fields->{$name} =~ s/^\n/\n $sums->{$alg} $size $file\n/
+                if defined $fields->{$name};
+        }
     }
 
-    # If there was no files entry, add one.
-    if (defined $dir_field) {
-	push @new_field, $dir_field;
-	push @new_field, $dsc_field_start;
-    }
-
-    # Add the section field if it didn't override one the user supplied.
-    if (defined $section) {
-	# If the record starts with a package field put it after that,
-	# otherwise put it first.
-	my $pos = $new_field[0] =~ /^Package:/i ? 1 : 0;
-	splice @new_field, $pos, 0, "Section: $section\n";
-    }
-
-    # Add the priority field if it didn't override one the user supplied.
-    if (defined $priority) {
-	# If the record starts with a package field put it after that,
-	# otherwise put it first.
-	my $pos = $new_field[0] =~ /^Package:/i ? 1 : 0;
-	splice @new_field, $pos, 0, "Priority: $priority\n";
-    }
-
-    return $source, join '', @new_field, "\n";
+    return $fields;
 }
 
 sub main {
     my (@out);
 
     init;
-    @ARGV >= 1 && @ARGV <= 3 or xwarn _g("1 to 3 args expected\n") and usage;
+    @ARGV >= 1 && @ARGV <= 3 or usageerr(_g("1 to 3 args expected\n"));
 
     push @ARGV, undef		if @ARGV < 2;
     push @ARGV, ''		if @ARGV < 3;
@@ -512,24 +352,42 @@ sub main {
 
     load_override $override if defined $override;
     load_src_override $Src_override, $override;
+    load_extra_override $Extra_override_file if defined $Extra_override_file;
 
     open FIND, "find \Q$dir\E -follow -name '*.dsc' -print |"
-	or xdie _g("can't fork:");
+        or syserr(_g("cannot fork for %s"), "find");
     while (<FIND>) {
     	chomp;
 	s-^\./+--;
-    	my ($source, $out) = process_dsc $prefix, $_ or next;
+
+        my $fields;
+
+        # FIXME: Fix it instead to not die on syntax and general errors?
+        eval {
+            $fields = process_dsc($prefix, $_);
+        };
+        if ($@) {
+            warn $@;
+            next;
+        }
+
 	if ($No_sort) {
-	    print $out;
+            $fields->output(\*STDOUT);
+            print "\n";
 	}
 	else {
-	    push @out, [$source, $out];
+            push @out, $fields;
 	}
     }
-    close FIND or xdie close_msg 'find';
+    close FIND or error(close_msg, 'find');
 
     if (@out) {
-	print map { $_->[1] } sort { $a->[0] cmp $b->[0] } @out;
+        map {
+            $_->output(\*STDOUT);
+            print "\n";
+        } sort {
+            $a->{Package} cmp $b->{Package}
+        } @out;
     }
 
     return 0;

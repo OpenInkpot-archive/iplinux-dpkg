@@ -2,8 +2,8 @@
  * dpkg - main program for package management
  * archives.c - actions that process archive files, mainly unpack
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2000 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2000 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -20,6 +20,9 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <errno.h>
 #include <stdio.h>
@@ -38,10 +41,13 @@
 #define obstack_chunk_alloc m_malloc
 #define obstack_chunk_free free
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <tarfn.h>
-#include <myopt.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/path.h>
+#include <dpkg/buffer.h>
+#include <dpkg/subproc.h>
+#include <dpkg/tarfn.h>
+#include <dpkg/myopt.h>
 
 #ifdef WITH_SELINUX
 #include <selinux/selinux.h>
@@ -57,64 +63,6 @@ static security_context_t scontext    = NULL;
 
 struct pkginfo *conflictor[MAXCONFLICTORS];
 int cflict_index = 0;
-
-/* snprintf(3) doesn't work if format contains %.<nnn>s and an argument has
- * invalid char for locale, then it returns -1.
- * ohshite() is ok, but fd_fd_copy(), which is used in tarobject() in this
- * file, is not ok, because
- * - fd_fd_copy() == buffer_copy_setup() [include/dpkg.h]
- * - buffer_copy_setup() uses varbufvprintf(&v, desc, al); [lib/mlib.c]
- * - varbufvprintf() fails and memory exausted, because it call
- *    fmt = "backend dpkg-deb during `%.255s'
- *    arg may contain some invalid char, for example,
- *    /usr/share/doc/console-tools/examples/unicode/\342\231\252\342\231\254
- *   in console-tools.
- *   In this case, if user uses some locale which doesn't support \342\231...,
- *   vsnprintf() always returns -1 and varbufextend() get called again
- *   and again until memory is exausted and it aborts.
- *
- * So, we need to escape invalid char, probably as in
- * tar-1.13.19/lib/quotearg.c: quotearg_buffer_restyled()
- * but here I escape all 8bit chars, in order to be simple.
- * - ukai@debian.or.jp
- */
-static char *
-quote_filename(char *buf, int size, char *s)
-{
-  char *r = buf;
-
-  while (size > 0) {
-    switch (*s) {
-    case '\0':
-      *buf = '\0';
-      return r;
-    case '\\':
-      *buf++ = '\\';
-      *buf++ = '\\';
-      size -= 2;
-      break;
-    default:
-      if (((*s) & 0x80) == 0) {
-        *buf++ = *s++;
-        --size;
-      } else {
-        if (size > 4) {
-          sprintf(buf, "\\%03o", *(unsigned char *)s);
-          size -= 4;
-          buf += 4;
-          s++;
-        } else {
-          /* buffer full */
-          *buf = '\0'; /* XXX */
-          return r;
-        }
-      }
-    }
-  }
-  *buf = '\0'; /* XXX */
-
-  return r;
-}
 
 /* special routine to handle partial reads from the tarfile */
 static int safe_read(int fd, void *buf, int len)
@@ -154,8 +102,11 @@ static void destroyobstack(void) {
   }
 }
 
-int filesavespackage(struct fileinlist *file, struct pkginfo *pkgtobesaved,
-                     struct pkginfo *pkgbeinginstalled) {
+bool
+filesavespackage(struct fileinlist *file,
+                 struct pkginfo *pkgtobesaved,
+                 struct pkginfo *pkgbeinginstalled)
+{
   struct pkginfo *divpkg, *thirdpkg;
   struct filepackages *packageslump;
   int i;
@@ -176,14 +127,14 @@ int filesavespackage(struct fileinlist *file, struct pkginfo *pkgtobesaved,
     divpkg= file->namenode->divert->pkg;
     if (divpkg == pkgtobesaved || divpkg == pkgbeinginstalled) {
       debug(dbg_eachfiledetail,"filesavespackage ... diverted -- save!");
-      return 1;
+      return true;
     }
   }
   /* Is the file in the package being installed ?  If so then it can't save.
    */
   if (file->namenode->flags & fnnf_new_inarchive) {
     debug(dbg_eachfiledetail,"filesavespackage ... in new archive -- no save");
-    return 0;
+    return false;
   }
   /* Look for a 3rd package which can take over the file (in case
    * it's a directory which is shared by many packages.
@@ -205,17 +156,16 @@ int filesavespackage(struct fileinlist *file, struct pkginfo *pkgtobesaved,
       debug(dbg_eachfiledetail,"filesavespackage ...  is 3rd package");
 
       if (!thirdpkg->clientdata->fileslistvalid) {
-        debug(dbg_eachfiledetail,
-              _("process_archive ...  already disappeared !"));
+        debug(dbg_eachfiledetail, "process_archive ... already disappeared!");
         continue;
       }
       /* We've found a package that can take this file. */
       debug(dbg_eachfiledetail, "filesavespackage ...  taken -- no save");
-      return 0;
+      return false;
     }
   }
   debug(dbg_eachfiledetail, "filesavespackage ... not taken -- save !");
-  return 1;
+  return true;
 }
 
 void cu_pathname(int argc, void **argv) {
@@ -230,17 +180,46 @@ int tarfileread(void *ud, char *buf, int len) {
   return r;
 }
 
+static void
+tarfile_skip_one_forward(struct TarInfo *ti,
+                         struct fileinlist **oldnifd,
+                         struct fileinlist *nifd)
+{
+  struct tarcontext *tc = (struct tarcontext *)ti->UserData;
+  size_t r;
+  char databuf[TARBLKSZ];
+
+  obstack_free(&tar_obs, nifd);
+  tc->newfilesp = oldnifd;
+  *oldnifd = NULL;
+
+  /* We need to advance the tar file to the next object, so read the
+   * file data and set it to oblivion.
+   */
+  if ((ti->Type == NormalFile0) || (ti->Type == NormalFile1)) {
+    char fnamebuf[256];
+
+    fd_null_copy(tc->backendpipe, ti->Size,
+                 _("skipped unpacking file '%.255s' (replaced or excluded?)"),
+                 path_quote_filename(fnamebuf, ti->Name, 256));
+    r = ti->Size % TARBLKSZ;
+    if (r > 0)
+      r = safe_read(tc->backendpipe, databuf, TARBLKSZ - r);
+  }
+}
+
 int fnameidlu;
 struct varbuf fnamevb;
 struct varbuf fnametmpvb;
 struct varbuf fnamenewvb;
-struct packageinlist *deconfigure = NULL;
+struct pkg_deconf_list *deconfigure = NULL;
 
 static time_t currenttime;
 
-static int does_replace(struct pkginfo *newpigp,
-                          struct pkginfoperfile *newpifp,
-                          struct pkginfo *oldpigp) {
+static int
+does_replace(struct pkginfo *newpigp, struct pkginfoperfile *newpifp,
+             struct pkginfo *oldpigp)
+{
   struct dependency *dep;
   
   debug(dbg_depcon,"does_replace new=%s old=%s (%s)",newpigp->name,
@@ -252,10 +231,10 @@ static int does_replace(struct pkginfo *newpigp,
           versiondescribe(&dep->list->version,vdew_always));
     if (!versionsatisfied(&oldpigp->installed,dep->list)) continue;
     debug(dbg_depcon,"does_replace ... yes");
-    return 1;
+    return true;
   }
   debug(dbg_depcon,"does_replace ... no");
-  return 0;
+  return false;
 }
 
 static void newtarobject_utime(const char *path, struct TarInfo *ti) {
@@ -328,9 +307,10 @@ struct fileinlist *addfiletolist(struct tarcontext *tc,
   return nifd;
 }
 
-static int linktosameexistingdir(const struct TarInfo *ti,
-                                 const char *fname,
-                                 struct varbuf *symlinkfn) {
+static bool
+linktosameexistingdir(const struct TarInfo *ti, const char *fname,
+                      struct varbuf *symlinkfn)
+{
   struct stat oldstab, newstab;
   int statr;
   const char *lastslash;
@@ -340,9 +320,10 @@ static int linktosameexistingdir(const struct TarInfo *ti,
     if (!(errno == ENOENT || errno == ELOOP || errno == ENOTDIR))
       ohshite(_("failed to stat (dereference) existing symlink `%.250s'"),
               fname);
-    return 0;
+    return false;
   }
-  if (!S_ISDIR(oldstab.st_mode)) return 0;
+  if (!S_ISDIR(oldstab.st_mode))
+    return false;
 
   /* But is it to the same dir ? */
   varbufreset(symlinkfn);
@@ -361,18 +342,21 @@ static int linktosameexistingdir(const struct TarInfo *ti,
     if (!(errno == ENOENT || errno == ELOOP || errno == ENOTDIR))
       ohshite(_("failed to stat (dereference) proposed new symlink target"
                 " `%.250s' for symlink `%.250s'"), symlinkfn->buf, fname);
-    return 0;
+    return false;
   }
-  if (!S_ISDIR(newstab.st_mode)) return 0;
+  if (!S_ISDIR(newstab.st_mode))
+    return false;
   if (newstab.st_dev != oldstab.st_dev ||
-      newstab.st_ino != oldstab.st_ino) return 0;
-  return 1;
+      newstab.st_ino != oldstab.st_ino)
+    return false;
+  return true;
 }
 
 int tarobject(struct TarInfo *ti) {
   static struct varbuf conffderefn, hardlinkfn, symlinkfn;
   static int fd;
   const char *usename;
+  struct filenamenode *usenode;
 
   struct conffile *conff;
   struct tarcontext *tc= (struct tarcontext*)ti->UserData;
@@ -423,7 +407,10 @@ int tarobject(struct TarInfo *ti) {
     }
   }
 
-  usename= namenodetouse(nifd->namenode,tc->pkg)->name + 1; /* Skip the leading `/' */
+  usenode = namenodetouse(nifd->namenode, tc->pkg);
+  usename = usenode->name + 1; /* Skip the leading '/'. */
+
+  trig_file_activate(usenode, tc->pkg);
 
   if (nifd->namenode->flags & fnnf_new_conff) {
     /* If it's a conffile we have to extract it next to the installed
@@ -559,9 +546,12 @@ int tarobject(struct TarInfo *ti) {
 	  keepexisting = 1;
         } else {
           if (!statr && S_ISDIR(stab.st_mode)) {
-            forcibleerr(fc_overwritedir, _("trying to overwrite directory `%.250s' "
-                        "in package %.250s with nondirectory"),
-                        nifd->namenode->name,otherpkg->name);
+            forcibleerr(fc_overwritedir,
+                        _("trying to overwrite directory '%.250s' "
+                          "in package %.250s %.250s with nondirectory"),
+                        nifd->namenode->name, otherpkg->name,
+                        versiondescribe(&otherpkg->installed.version,
+                                        vdew_always));
           } else {
             /* WTA: At this point we are replacing something without a Replaces.
 	     * if the new object is a directory and the previous object does not
@@ -569,8 +559,11 @@ int tarobject(struct TarInfo *ti) {
 	     */
             if (! (statr && ti->Type==Directory))
               forcibleerr(fc_overwrite,
-                        _("trying to overwrite `%.250s', which is also in package %.250s"),
-                        nifd->namenode->name,otherpkg->name);
+                          _("trying to overwrite '%.250s', "
+                            "which is also in package %.250s %.250s"),
+                          nifd->namenode->name, otherpkg->name,
+                          versiondescribe(&otherpkg->installed.version,
+                                          vdew_always));
           }
         }
       }
@@ -579,20 +572,7 @@ int tarobject(struct TarInfo *ti) {
        
   if (existingdirectory) return 0;
   if (keepexisting) {
-    obstack_free(&tar_obs, nifd);
-    tc->newfilesp= oldnifd;
-    *oldnifd = NULL;
-
-    /* We need to advance the tar file to the next object, so read the
-     * file data and set it to oblivion.
-     */
-    if ((ti->Type == NormalFile0) || (ti->Type == NormalFile1)) {
-      char fnamebuf[256];
-      fd_null_copy(tc->backendpipe, ti->Size, _("gobble replaced file `%.255s'"),quote_filename(fnamebuf,256,ti->Name));
-      r= ti->Size % TARBLKSZ;
-      if (r > 0) r= safe_read(tc->backendpipe,databuf,TARBLKSZ - r);
-    }
-
+    tarfile_skip_one_forward(ti, oldnifd, nifd);
     return 0;
   }
 
@@ -651,12 +631,15 @@ int tarobject(struct TarInfo *ti) {
      * it until we apply the proper mode, which might be a statoverride.
      */
     fd= open(fnamenewvb.buf, (O_CREAT|O_EXCL|O_WRONLY), 0);
-    if (fd < 0) ohshite(_("unable to create `%.255s'"),ti->Name);
+    if (fd < 0)
+      ohshite(_("unable to create `%.255s' (while processing `%.255s')"), fnamenewvb.buf, ti->Name);
     push_cleanup(cu_closefd, ehflag_bombout, NULL, 0, 1, &fd);
     debug(dbg_eachfiledetail,"tarobject NormalFile[01] open size=%lu",
           (unsigned long)ti->Size);
     { char fnamebuf[256];
-    fd_fd_copy(tc->backendpipe, fd, ti->Size, _("backend dpkg-deb during `%.255s'"),quote_filename(fnamebuf,256,ti->Name));
+    fd_fd_copy(tc->backendpipe, fd, ti->Size,
+               _("backend dpkg-deb during `%.255s'"),
+               path_quote_filename(fnamebuf, ti->Name, 256));
     }
     r= ti->Size % TARBLKSZ;
     if (r > 0) r= safe_read(tc->backendpipe,databuf,TARBLKSZ - r);
@@ -729,7 +712,7 @@ int tarobject(struct TarInfo *ti) {
     newtarobject_allmodes(fnamenewvb.buf,ti,nifd->namenode->statoverride);
     break;
   default:
-    internerr("bad tar type, but already checked");
+    internerr("unknown tar type '%d', but already checked", ti->Type);
   }
   /* CLEANUP: Now we have extracted the new object in .dpkg-new (or,
    * if the file already exists as a directory and we were trying to extract
@@ -765,11 +748,11 @@ int tarobject(struct TarInfo *ti) {
        * (Pretend that making a copy of a symlink is the same as linking to it.)
        */
       varbufreset(&symlinkfn);
-      do {
-        varbufextend(&symlinkfn);
-        r= readlink(fnamevb.buf,symlinkfn.buf,symlinkfn.size);
-        if (r<0) ohshite(_("unable to read link `%.255s'"),ti->Name);
-      } while ((size_t)r == symlinkfn.size);
+      varbuf_grow(&symlinkfn, stab.st_size + 1);
+      r = readlink(fnamevb.buf, symlinkfn.buf, symlinkfn.size);
+      if (r < 0)
+        ohshite(_("unable to read link `%.255s'"), ti->Name);
+      assert(r == stab.st_size);
       symlinkfn.used= r; varbufaddc(&symlinkfn,0);
       if (symlink(symlinkfn.buf,fnametmpvb.buf))
         ohshite(_("unable to make backup symlink for `%.255s'"),ti->Name);
@@ -834,12 +817,11 @@ int tarobject(struct TarInfo *ti) {
   return 0;
 }
 
-static int try_deconfigure_can(int (*force_p)(struct deppossi*),
-                               struct pkginfo *pkg,
-                               struct deppossi *pdep,
-                               const char *action,
-                               struct pkginfo *removal,
-                          const char *why) {
+static int
+try_deconfigure_can(bool (*force_p)(struct deppossi *), struct pkginfo *pkg,
+                    struct deppossi *pdep, const char *action,
+                    struct pkginfo *removal, const char *why)
+{
   /* Also checks whether the pdep is forced, first, according to force_p.
    * force_p may be 0 in which case nothing is considered forced.
    *
@@ -852,19 +834,16 @@ static int try_deconfigure_can(int (*force_p)(struct deppossi*),
    *                 1: deconfiguration queued ok (no message printed)
    *                 0: not possible (why is printed)
    */
-  struct packageinlist *newdeconf;
+  struct pkg_deconf_list *newdeconf;
   
   if (force_p && force_p(pdep)) {
-    fprintf(stderr, _("dpkg: warning - "
-                      "ignoring dependency problem with %s:\n%s"),
-            action, why);
+    warning(_("ignoring dependency problem with %s:\n%s"), action, why);
     return 2;
   } else if (f_autodeconf) {
     if (pkg->installed.essential) {
       if (fc_removeessential) {
-        fprintf(stderr, _("dpkg: warning - considering deconfiguration of essential\n"
-                          " package %s, to enable %s.\n"),
-                pkg->name, action);
+        warning(_("considering deconfiguration of essential\n"
+                  " package %s, to enable %s."), pkg->name, action);
       } else {
         fprintf(stderr, _("dpkg: no, %s is essential, will not deconfigure\n"
                           " it in order to enable %s.\n"),
@@ -873,10 +852,10 @@ static int try_deconfigure_can(int (*force_p)(struct deppossi*),
       }
     }
     pkg->clientdata->istobe= itb_deconfigure;
-    newdeconf = m_malloc(sizeof(struct packageinlist));
+    newdeconf = m_malloc(sizeof(struct pkg_deconf_list));
     newdeconf->next= deconfigure;
     newdeconf->pkg= pkg;
-    newdeconf->xinfo= removal;
+    newdeconf->pkg_removal = removal;
     deconfigure= newdeconf;
     return 1;
   } else {
@@ -898,10 +877,8 @@ static int try_remove_can(struct deppossi *pdep,
 void check_breaks(struct dependency *dep, struct pkginfo *pkg,
                   const char *pfilename) {
   struct pkginfo *fixbydeconf;
-  struct varbuf why;
+  struct varbuf why = VARBUF_INIT;
   int ok;
-
-  varbufinit(&why);
 
   fixbydeconf = NULL;
   if (depisok(dep, &why, &fixbydeconf, 0)) {
@@ -937,8 +914,7 @@ void check_breaks(struct dependency *dep, struct pkginfo *pkg,
   if (ok > 0) return;
 
   if (force_breaks(dep->list)) {
-    fprintf(stderr, _("dpkg: warning - ignoring breakage,"
-                      " may proceed anyway !\n"));
+    warning(_("ignoring breakage, may proceed anyway!"));
     return;
   }
 
@@ -956,11 +932,8 @@ void check_conflict(struct dependency *dep, struct pkginfo *pkg,
                     const char *pfilename) {
   struct pkginfo *fixbyrm;
   struct deppossi *pdep, flagdeppossi;
-  struct varbuf conflictwhy, removalwhy;
+  struct varbuf conflictwhy = VARBUF_INIT, removalwhy = VARBUF_INIT;
   struct dependency *providecheck;
-  
-  varbufinit(&conflictwhy);
-  varbufinit(&removalwhy);
 
   fixbyrm = NULL;
   if (depisok(dep, &conflictwhy, &fixbyrm, 0)) {
@@ -1028,10 +1001,10 @@ void check_conflict(struct dependency *dep, struct pkginfo *pkg,
       if (!pdep && skip_due_to_hold(fixbyrm)) {
         pdep= &flagdeppossi;
       }
-      if (!pdep && (fixbyrm->eflag & eflagf_reinstreq)) {
+      if (!pdep && (fixbyrm->eflag & eflag_reinstreq)) {
         if (fc_removereinstreq) {
           fprintf(stderr, _("dpkg: package %s requires reinstallation, but will"
-                  " remove anyway as you request.\n"), fixbyrm->name);
+                  " remove anyway as you requested.\n"), fixbyrm->name);
         } else {
           fprintf(stderr, _("dpkg: package %s requires reinstallation, "
                   "will not remove.\n"), fixbyrm->name);
@@ -1058,7 +1031,7 @@ void check_conflict(struct dependency *dep, struct pkginfo *pkg,
           pfilename, pkg->name, conflictwhy.buf);
   if (!force_conflicts(dep->list))
     ohshit(_("conflicting packages - not installing %.250s"),pkg->name);
-  fprintf(stderr, _("dpkg: warning - ignoring conflict, may proceed anyway !\n"));
+  warning(_("ignoring conflict, may proceed anyway!"));
   varbuffree(&conflictwhy);
   
   return;
@@ -1067,7 +1040,7 @@ void check_conflict(struct dependency *dep, struct pkginfo *pkg,
 void cu_cidir(int argc, void **argv) {
   char *cidir= (char*)argv[0];
   char *cidirrest= (char*)argv[1];
-  cidirrest[-1]= 0;
+  cidirrest[-1] = '\0';
   ensure_pathname_nonexisting(cidir);
 }  
 
@@ -1158,7 +1131,7 @@ void archivefiles(const char *const *argv) {
     p= findoutput.buf; i=0;
     while (*p) {
       arglist[i++]= p;
-      while ((c= *p++) != 0);
+      while ((c = *p++) != '\0') ;
     }
     arglist[i] = NULL;
     argp= arglist;
@@ -1173,9 +1146,11 @@ void archivefiles(const char *const *argv) {
 
   currenttime = time(NULL);
 
-  varbufinit(&fnamevb);
-  varbufinit(&fnametmpvb);
-  varbufinit(&fnamenewvb);
+  /* Initialize fname variables contents. */
+
+  varbufreset(&fnamevb);
+  varbufreset(&fnametmpvb);
+  varbufreset(&fnamenewvb);
 
   varbufaddstr(&fnamevb,instdir); varbufaddc(&fnamevb,'/');
   varbufaddstr(&fnametmpvb,instdir); varbufaddc(&fnametmpvb,'/');
@@ -1195,8 +1170,8 @@ void archivefiles(const char *const *argv) {
     push_error_handler(&ejbuf,print_error_perpackage,thisarg);
     process_archive(thisarg);
     onerr_abort++;
-    if (ferror(stdout)) werr("stdout");
-    if (ferror(stderr)) werr("stderr");
+    m_output(stdout, _("<standard output>"));
+    m_output(stderr, _("<standard error>"));
     onerr_abort--;
     set_error_display(NULL, NULL);
     error_unwind(ehflag_normaltidy);
@@ -1213,7 +1188,7 @@ void archivefiles(const char *const *argv) {
   case act_avail:
     break;
   default:
-    internerr("unknown action");
+    internerr("unknown action '%d'", cipaction->arg);
   }
 
   trigproc_run_deferred();
@@ -1269,8 +1244,8 @@ int wanttoinstall(struct pkginfo *pkg, const struct versionrevision *ver, int sa
     }
   } else {
     if (fc_downgrade) {
-      if (saywhy) fprintf(stderr, _("%s - warning: downgrading %.250s "
-             "from %.250s to %.250s.\n"), DPKG, pkg->name,
+      if (saywhy)
+        warning(_("downgrading %.250s from %.250s to %.250s."), pkg->name,
              versiondescribe(&pkg->installed.version, vdew_nonambig),
              versiondescribe(&pkg->available.version, vdew_nonambig));
       return 1;

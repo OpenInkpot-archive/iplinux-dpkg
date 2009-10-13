@@ -2,8 +2,8 @@
  * dselect - Debian package maintenance user interface
  * method.h - access method handling declarations
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2001 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -22,6 +22,20 @@
 
 #ifndef METHOD_H
 #define METHOD_H
+
+#define CMETHOPTFILE		"cmethopt"
+#define METHLOCKFILE		"methlock"
+
+#define METHODSDIR		"methods"
+
+#define IMETHODMAXLEN		50
+#define IOPTIONMAXLEN		IMETHODMAXLEN
+#define METHODOPTIONSFILE	"names"
+#define METHODSETUPSCRIPT	"setup"
+#define METHODUPDATESCRIPT	"update"
+#define METHODINSTALLSCRIPT	"install"
+#define OPTIONSDESCPFX		"desc."
+#define OPTIONINDEXMAXLEN	5
 
 struct method {
   struct method *next, *back;
@@ -75,8 +89,8 @@ extern int noptions;
 extern struct dselect_option *options, *coption;
 extern struct method *methods;
 
-extern void readmethods(const char *pathbase, dselect_option **optionspp, int *nread);
-extern void getcurrentopt();
-extern void writecurrentopt();
+void readmethods(const char *pathbase, dselect_option **optionspp, int *nread);
+void getcurrentopt();
+void writecurrentopt();
 
 #endif /* METHOD_H */

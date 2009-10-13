@@ -8,7 +8,7 @@ use POSIX;
 
 use Dpkg;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(usageerr failure);
+use Dpkg::ErrorHandling;
 use Dpkg::Changelog::Debian;
 
 textdomain("dpkg-dev");
@@ -103,8 +103,10 @@ my $changes = Dpkg::Changelog::Debian->init();
 
 $file ||= $default_file;
 $label ||= $file;
-unless ($since or $until or $from or $to or
-	$offset or $count or $all) {
+unless (defined($since) or defined($until) or defined($from) or
+        defined($to) or defined($offset) or defined($count) or
+        defined($all))
+{
     $count = 1;
 }
 my @all = $all ? ( all => $all ) : ();
@@ -115,15 +117,14 @@ my $opts = { since => $since, until => $until,
 
 if ($file eq '-') {
     $changes->parse({ inhandle => \*STDIN, %$opts })
-	or failure(_g('fatal error occured while parsing input'));
+	or error(_g('fatal error occured while parsing input'));
 } else {
     $changes->parse({ infile => $file, %$opts })
-	or failure(_g('fatal error occured while parsing %s'),
-		   $file );
+	or error(_g('fatal error occured while parsing %s'), $file);
 }
 
 
 eval("print \$changes->${format}_str(\$opts)");
 if ($@) {
-    failure("%s",$@);
+    error("%s", $@);
 }

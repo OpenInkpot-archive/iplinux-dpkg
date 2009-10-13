@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * archives.h - functions common to archives.c and processarc.c
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -22,17 +22,25 @@
 #ifndef ARCHIVES_H
 #define ARCHIVES_H
 
+#include <stdbool.h>
+
 struct tarcontext {
   int backendpipe;
   struct pkginfo *pkg;
   struct fileinlist **newfilesp;
 };
 
+struct pkg_deconf_list {
+  struct pkg_deconf_list *next;
+  struct pkginfo *pkg;
+  struct pkginfo *pkg_removal;
+};
+
 extern int fnameidlu;
 extern struct varbuf fnamevb;
 extern struct varbuf fnametmpvb;
 extern struct varbuf fnamenewvb;
-extern struct packageinlist *deconfigure;
+extern struct pkg_deconf_list *deconfigure;
 
 extern struct pkginfo *conflictor[];
 extern int cflict_index;
@@ -60,8 +68,8 @@ int unlinkorrmdir(const char *filename);
 int tarobject(struct TarInfo *ti);
 int tarfileread(void *ud, char *buf, int len);
 
-int filesavespackage(struct fileinlist*, struct pkginfo*,
-                     struct pkginfo *pkgbeinginstalled);
+bool filesavespackage(struct fileinlist *, struct pkginfo *,
+                      struct pkginfo *pkgbeinginstalled);
 
 void check_conflict(struct dependency *dep, struct pkginfo *pkg,
                     const char *pfilename);

@@ -2,8 +2,8 @@
  * dselect - Debian package maintenance user interface
  * methlist.cc - list of access methods and options
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2001 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,19 +19,20 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "bindings.h"
 #include "method.h"
@@ -174,7 +175,7 @@ quitaction methodlist::display() {
     interp= (*bindings)(response);
     if (debug)
       fprintf(debug,"methodlist[%p]::display() response=%d interp=%s\n",
-              this,response, interp ? interp->action : _("[none]"));
+              this,response, interp ? interp->action : "[none]");
     if (!interp) { beep(); continue; }
     (this->*(interp->mfn))();
     if (interp->qa != qa_noquit) break;

@@ -1,4 +1,4 @@
-.TH dpkg 1 "2008-04-06" "Debian Project" "dpkg suite"
+.TH dpkg 1 "2009-09-06" "Debian Project" "dpkg suite"
 .SH NAME
 dpkg \- package manager for Debian
 .
@@ -77,6 +77,10 @@ The package is unpacked and configured OK.
 .B install
 The package is selected for installation.
 .TP
+.B hold
+A package marked to be on \fBhold\fP is not handled by \fBdpkg\fP,
+unless forced to do that with option \fB\-\-force\-hold\fP.
+.TP
 .B deinstall
 The package is selected for deinstallation (i.e. we want to remove all
 files, except configuration files).
@@ -85,10 +89,6 @@ files, except configuration files).
 The package is selected to be purged (i.e. we want to remove everything,
 even configuration files).
 .SS PACKAGE FLAGS
-.TP
-.B hold
-A package marked to be on \fBhold\fP is not handled by \fBdpkg\fP,
-unless forced to do that with option \fB\-\-force\-hold\fP.
 .TP
 .B reinst\-required
 A package marked \fBreinst\-required\fP is broken and requires
@@ -141,8 +141,8 @@ packages are configured.
 Configuring consists of the following steps:
 .br
 
-\fB1.\fP Unpack the configuration files, and at the same time back up
-the old configuration files, so that they can be restored if
+\fB1.\fP Unpack the conffiles, and at the same time back up
+the old conffiles, so that they can be restored if
 something goes wrong.
 .br
 
@@ -157,14 +157,18 @@ can be fixed later by running: \fBdpkg \-\-configure \-\-pending\fP.
 .TP
 \fB\-r\fP, \fB\-\-remove\fP, \fB\-P\fP, \fB\-\-purge \fP\fIpackage\fP...|\fB\-a\fP|\fB\-\-pending\fP
 Remove an installed package. \fB\-r\fP or \fB\-\-remove\fP remove
-everything except configuration files. This may avoid having to
-reconfigure the package if it is reinstalled later. (Configuration
-files are the files listed in the \fIdebian/conffiles\fP control
-file). \fB\-P\fP or \fB\-\-purge\fP removes everything, including configuration
-files. If \fB\-a\fP or \fB\-\-pending\fP is given instead of a package
+everything except conffiles. This may avoid having to
+reconfigure the package if it is reinstalled later. (Conffiles are configuration
+files that are listed in the \fIDEBIAN/conffiles\fP control
+file). \fB\-P\fP or \fB\-\-purge\fP removes everything, including
+conffiles. If \fB\-a\fP or \fB\-\-pending\fP is given instead of a package
 name, then all packages unpacked, but marked to be removed or purged
 in file \fI/var/lib/dpkg/status\fP, are removed or purged,
-respectively.
+respectively. Note: some configuration files might be unknown to
+\fBdpkg\fP because they are created and handled separately through the
+configuration scripts. In that case, \fBdpkg\fP won't remove them by
+itself, but the package's \fIpostrm\fP script (which is called by
+\fBdpkg\fP), has to take care of their removal during purge.
 
 Removing of a package consists of the following steps:
 .br
@@ -188,7 +192,9 @@ Debian is simply named \fIPackages\fP. \fBdpkg\fP keeps its
 record of available packages in \fI/var/lib/dpkg/available\fP.
 
 A simpler one-shot command to retrieve and update the \fIavailable\fR
-file is \fBdselect update\fR.
+file is \fBdselect update\fR. Note that this file is mostly useless
+if you don't use \fBdselect\fR but an APT-based frontend: APT has its
+own system to keep track of available packages.
 .TP
 \fB\-A\fP, \fB\-\-record\-avail\fP \fIpackage_file\fP...
 Update \fBdpkg\fP and \fBdselect\fP's idea of which packages are
@@ -197,7 +203,8 @@ available with information from the package \fIpackage_file\fP. If
 must refer to a directory instead.
 .TP
 .B \-\-forget\-old\-unavail
-Forget about uninstalled unavailable packages.
+Now \fBobsolete\fP and a no-op as \fBdpkg\fP will automatically forget
+uninstalled unavailable packages.
 .TP
 .B \-\-clear\-avail
 Erase the existing information about what packages are available.
@@ -209,7 +216,8 @@ working.
 .TP
 \fB\-\-get\-selections\fP [\fIpackage-name-pattern\fP...]
 Get list of package selections, and write it to stdout. Without a pattern,
-packages marked with state purge will not be shown.
+non-installed packages (i.e. those which have been previously purged)
+will not be shown.
 .TP
 .B \-\-set\-selections
 Set package selections using file read from stdin. This file should be
@@ -301,12 +309,14 @@ See \fBdpkg\-query\fP(1) for more information about the following actions.
     Search for a filename from installed packages.
 \fB\-p\fP, \fB\-\-print\-avail\fP \fIpackage-name\fP...
     Display details about \fIpackage-name\fP, as found in
-    \fI/var/lib/dpkg/available\fP.
+    \fI/var/lib/dpkg/available\fP. Users of APT-based frontends
+    should use \fBapt\-cache show\fP \fIpackage-name\fP instead.
 .fi
 .
 .SH OPTIONS
 All options can be specified both on the command line and in the \fBdpkg\fP
-configuration file \fI/etc/dpkg/dpkg.cfg\fP. Each line in the configuration
+configuration file \fI/etc/dpkg/dpkg.cfg\fP or the files on the configuration
+directory \fI/etc/dpkg/dpkg.cfg.d/\fP. Each line in the configuration
 file is either an option (exactly the same as the command line option but
 without leading dashes) or a comment (if it starts with a \fB#\fR).
 .br
@@ -396,7 +406,7 @@ Install, even if it conflicts with another package. This is dangerous,
 for it will usually cause overwriting of some files.
 
 \fBconfmiss\fP:
-Always install a missing configuration file. This is dangerous,
+Always install a missing conffile. This is dangerous,
 since it means not preserving a change (removing) made to the
 file.
 
@@ -495,6 +505,20 @@ be marked selected for deinstallation.
 .BR \-E ", " \-\-skip\-same\-version
 Don't install the package if the same version of the package is already
 installed.
+.P
+.BI \-\-pre\-invoke= command
+.br
+.BI \-\-post\-invoke= command
+.RS
+Set an invoke hook \fIcommand\fP to be run via \*(lqsh \-c\*(rq before or
+after the dpkg run for the \fIunpack\fP, \fIconfigure\fP, \fIinstall\fP,
+\fItriggers\-only\fP, \fIremove\fP and \fIpurge\fP dpkg actions. This
+option can be specified multiple times. The order the options are specified
+is preserved, with the ones from the configuration files taking precedence.
+The environment variable \fBDPKG_HOOK_ACTION\fP is set for the hooks to the
+current dpkg action. Note: front-ends might call dpkg several times per
+invocation, which might run the hooks more times than expected.
+.RE
 .TP
 \fB\-\-status\-fd \fR\fIn\fR
 Send machine-readable package status and progress information to file
@@ -513,7 +537,7 @@ where the translators have not made mistakes every newline is followed
 by at least one space.
 .TP
 .BI "status: " file " : conffile-prompt : '" real-old "' '" real-new "' " useredited " " distedited
-User is being asked a configuration file question.
+User is being asked a conffile question.
 .TP
 .BI "processing: " stage ": " package
 Sent just before a processing stage starts. \fIstage\fR is one of
@@ -568,6 +592,9 @@ Statuses of available packages. This file contains information about
 whether a package is marked for removing or not, whether it is
 installed or not, etc. See section \fBINFORMATION ABOUT PACKAGES\fP
 for more info.
+
+The status file is backed up daily in \fI/var/backups\fP. It can be
+useful if it's lost or corrupted due to filesystems troubles.
 .P
 The following files are components of a binary package. See \fBdeb\fP(5)
 for more information about them:
@@ -596,6 +623,18 @@ The program \fBdpkg\fP will execute when starting a new shell.
 .B COLUMNS
 Sets the number of columns \fBdpkg\fP should use when displaying formatted
 text. Currently only used by \-l.
+.TP
+.B DPKG_RUNNING_VERSION
+Defined by \fBdpkg\fP on the maintainer script environment to the
+version of the currently running \fBdpkg\fP instance.
+.TP
+.B DPKG_MAINTSCRIPT_PACKAGE
+Defined by \fBdpkg\fP on the maintainer script environment to the
+package name being handled.
+.TP
+.B DPKG_MAINTSCRIPT_ARCH
+Defined by \fBdpkg\fP on the maintainer script environment to the
+architecture the package got built for.
 .
 .SH EXAMPLES
 To list packages related to the editor \fBvi\fP(1):
@@ -622,7 +661,7 @@ To install a package, you first need to find it in an archive or
 CDROM. The "available" file shows that the vim package is in section
 "editors":
 .br
-\fB     cd /cdrom/hamm/hamm/binary/editors\fP
+\fB     cd /cdrom/pool/main/v/vim\fP
 \fB     dpkg \-i vim_4.5\-3.deb\fP
 .br
 

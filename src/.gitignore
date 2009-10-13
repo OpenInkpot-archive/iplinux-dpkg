@@ -1,7 +1,4 @@
-*.o
-.deps
-Makefile
-Makefile.in
 dpkg
 dpkg-query
+dpkg-statoverride
 dpkg-trigger

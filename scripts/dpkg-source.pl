@@ -6,19 +6,19 @@ use warnings;
 
 use Dpkg;
 use Dpkg::Gettext;
-use Dpkg::ErrorHandling qw(warning error unknown syserr usageerr info
-                           $quiet_warnings);
+use Dpkg::ErrorHandling;
 use Dpkg::Arch qw(debarch_eq);
-use Dpkg::Deps qw(@src_dep_fields %dep_field_type);
-use Dpkg::Fields qw(:list capit);
+use Dpkg::Deps;
 use Dpkg::Compression;
-use Dpkg::Control;
+use Dpkg::Control::Info;
+use Dpkg::Control::Fields;
 use Dpkg::Substvars;
-use Dpkg::Version qw(check_version);
+use Dpkg::Version;
 use Dpkg::Vars;
 use Dpkg::Changelog qw(parse_changelog);
 use Dpkg::Source::Compressor;
 use Dpkg::Source::Package;
+use Dpkg::Vendor qw(run_vendor_hook);
 
 use English;
 use File::Spec;
@@ -33,15 +33,16 @@ my $changelogformat;
 my @build_formats = ("1.0", "3.0 (native)");
 my %options = (
     # Compression related
-    compression => 'gzip',
-    comp_level => 9,
-    comp_ext => $comp_ext{'gzip'},
+    compression => $Dpkg::Source::Compressor::default_compression,
+    comp_level => $Dpkg::Source::Compressor::default_compression_level,
+    comp_ext => $comp_ext{$Dpkg::Source::Compressor::default_compression},
     # Ignore files
     tar_ignore => [],
     diff_ignore_regexp => '',
     # Misc options
     copy_orig_tarballs => 1,
     no_check => 0,
+    require_valid_signature => 0,
 );
 
 # Fields to remove/override
@@ -98,12 +99,12 @@ while (@ARGV && $ARGV[0] =~ m/^-/) {
         $options{'copy_orig_tarballs'} = 0;
     } elsif (m/^--no-check$/) {
         $options{'no_check'} = 1;
+    } elsif (m/^--require-valid-signature$/) {
+        $options{'require_valid_signature'} = 1;
     } elsif (m/^-V(\w[-:0-9A-Za-z]*)[=:]/) {
         $substvars->set($1, $POSTMATCH);
-        warning(_g("substvars support is deprecated (see README.feature-removal-schedule)"));
     } elsif (m/^-T/) {
         $varlistfile = $POSTMATCH;
-        warning(_g("substvars support is deprecated (see README.feature-removal-schedule)"));
     } elsif (m/^-(h|-help)$/) {
         usage();
         exit(0);
@@ -114,7 +115,7 @@ while (@ARGV && $ARGV[0] =~ m/^-/) {
         # Deprecated option
         warning(_g("-E and -W are deprecated, they are without effect"));
     } elsif (m/^-q$/) {
-        $quiet_warnings = 1;
+        report_options(quiet_warnings => 1);
         $options{'quiet'} = 1;
     } elsif (m/^--$/) {
         last;
@@ -145,7 +146,7 @@ if ($options{'opmode'} eq 'build') {
     my %ch_options = (file => $changelogfile);
     $ch_options{"changelogformat"} = $changelogformat if $changelogformat;
     my $changelog = parse_changelog(%ch_options);
-    my $control = Dpkg::Control->new($controlfile);
+    my $control = Dpkg::Control::Info->new($controlfile);
 
     my $srcpkg = Dpkg::Source::Package->new(options => \%options);
     my $fields = $srcpkg->{'fields'};
@@ -161,27 +162,19 @@ if ($options{'opmode'} eq 'build') {
 	if (m/^Source$/i) {
 	    set_source_package($v);
 	    $fields->{$_} = $v;
-	} elsif (m/^(Format|Standards-Version|Origin|Maintainer|Homepage)$/i ||
-		 m/^Dm-Upload-Allowed$/i ||
-		 m/^Vcs-(Browser|Arch|Bzr|Cvs|Darcs|Git|Hg|Mtn|Svn)$/i) {
-	    $fields->{$_} = $v;
 	} elsif (m/^Uploaders$/i) {
 	    ($fields->{$_} = $v) =~ s/[\r\n]//g; # Merge in a single-line
 	} elsif (m/^Build-(Depends|Conflicts)(-Indep)?$/i) {
 	    my $dep;
-	    my $type = $dep_field_type{capit($_)};
+	    my $type = field_get_dep_type($_);
 	    $dep = Dpkg::Deps::parse($v, union => $type eq 'union');
 	    error(_g("error occurred while parsing %s"), $_) unless defined $dep;
 	    my $facts = Dpkg::Deps::KnownFacts->new();
 	    $dep->simplify_deps($facts);
 	    $dep->sort() if $type eq 'union';
 	    $fields->{$_} = $dep->dump();
-	} elsif (s/^X[BC]*S[BC]*-//i) { # Include XS-* fields
-	    $fields->{$_} = $v;
-	} elsif (m/^$control_src_field_regex$/i || m/^X[BC]+-/i) {
-	    # Silently ignore valid fields
 	} else {
-	    unknown(_g('general section of control info file'));
+            field_transfer_single($src_fields, $fields);
 	}
     }
 
@@ -192,40 +185,35 @@ if ($options{'opmode'} eq 'build') {
 	foreach $_ (keys %{$pkg}) {
 	    my $v = $pkg->{$_};
             if (m/^Architecture$/) {
-		if (debarch_eq($v, 'any')) {
-                    @sourcearch= ('any');
-		} elsif (debarch_eq($v, 'all')) {
-                    if (!@sourcearch || $sourcearch[0] eq 'all') {
-                        @sourcearch= ('all');
-                    } else {
-                        @sourcearch= ('any');
-                    }
+                # Gather all binary architectures in one set. 'any' and 'all'
+                # are special-cased as they need to be the only ones in the
+                # current stanza if present.
+                if (debarch_eq($v, 'any') || debarch_eq($v, 'all')) {
+                    push(@sourcearch, $v) unless $archadded{$v}++;
                 } else {
-		    if (@sourcearch && grep($sourcearch[0] eq $_, 'any', 'all')) {
-			@sourcearch= ('any');
-		    } else {
-			for my $a (split(/\s+/, $v)) {
-			    error(_g("`%s' is not a legal architecture string"),
-			          $a)
-				unless $a =~ /^[\w-]+$/;
-			    error(_g("architecture %s only allowed on its " .
-			             "own (list for package %s is `%s')"),
-			          $a, $p, $a)
-				if grep($a eq $_, 'any','all');
-                            push(@sourcearch,$a) unless $archadded{$a}++;
-                        }
+                    for my $a (split(/\s+/, $v)) {
+                        error(_g("`%s' is not a legal architecture string"),
+                              $a)
+                            unless $a =~ /^[\w-]+$/;
+                        error(_g("architecture %s only allowed on its " .
+                                 "own (list for package %s is `%s')"),
+                              $a, $p, $a)
+                            if grep($a eq $_, 'any', 'all');
+                        push(@sourcearch, $a) unless $archadded{$a}++;
+                    }
                 }
-                }
-                $fields->{'Architecture'}= join(' ',@sourcearch);
-            } elsif (s/^X[BC]*S[BC]*-//i) { # Include XS-* fields
-                $fields->{$_} = $v;
-            } elsif (m/^$control_pkg_field_regex$/ ||
-                     m/^X[BC]+-/i) { # Silently ignore valid fields
+            } elsif (m/^Homepage$/) {
+                # Do not overwrite the same field from the source entry
             } else {
-                unknown(_g("package's section of control info file"));
+                field_transfer_single($pkg, $fields);
             }
 	}
     }
+    if (grep($_ eq 'any', @sourcearch)) {
+        # If we encounter one 'any' then the other arches become insignificant.
+        @sourcearch = ('any');
+    }
+    $fields->{'Architecture'} = join(' ', @sourcearch);
 
     # Scan fields of dpkg-parsechangelog
     foreach $_ (keys %{$changelog}) {
@@ -235,23 +223,22 @@ if ($options{'opmode'} eq 'build') {
 	    set_source_package($v);
 	    $fields->{$_} = $v;
 	} elsif (m/^Version$/) {
-	    check_version($v);
+	    my ($ok, $error) = version_check($v);
+            error($error) unless $ok;
 	    $fields->{$_} = $v;
-	} elsif (s/^X[BS]*C[BS]*-//i) {
-	    $fields->{$_} = $v;
-	} elsif (m/^(Maintainer|Changes|Urgency|Distribution|Date|Closes)$/i ||
-		 m/^X[BS]+-/i) {
+	} elsif (m/^Maintainer$/i) {
+            # Do not replace the field coming from the source entry
 	} else {
-	    unknown(_g("parsed version of changelog"));
+            field_transfer_single($changelog, $fields);
 	}
     }
     
     $fields->{'Binary'} = join(', ', @binarypackages);
+    # Avoid overly long line (>~1000 chars) by splitting over multiple lines
+    $fields->{'Binary'} =~ s/(.{980,}?), ?/$1,\n /g;
 
     # Generate list of formats to try
-    my @try_formats;
-    push @try_formats, $fields->{'Format'} if exists $fields->{'Format'};
-    push @try_formats, @cmdline_formats;
+    my @try_formats = (@cmdline_formats);
     if (-e "$dir/debian/source/format") {
         open(FORMAT, "<", "$dir/debian/source/format") ||
             syserr(_g("cannot read %s"), "$dir/debian/source/format");
@@ -275,6 +262,7 @@ if ($options{'opmode'} eq 'build') {
     $srcpkg->init_options();
     $srcpkg->parse_cmdline_options(@cmdline_options);
 
+    run_vendor_hook("before-source-build", $srcpkg);
     # Build the files (.tar.gz, .diff.gz, etc)
     $srcpkg->build($dir);
 
@@ -324,17 +312,17 @@ if ($options{'opmode'} eq 'build') {
         if ($srcpkg->is_signed()) {
             $srcpkg->check_signature();
         } else {
-            warning(_g("extracting unsigned source package (%s)"), $dsc);
+            if ($options{'require_valid_signature'}) {
+                error(_g("%s doesn't contain a valid OpenPGP signature"), $dsc);
+            } else {
+                warning(_g("extracting unsigned source package (%s)"), $dsc);
+            }
         }
         $srcpkg->check_checksums();
     }
 
     # Unpack the source package (delegated to Dpkg::Source::Package::*)
-    #XXX: we have to keep the old output until sbuild stop parsing
-    # dpkg-source's output
-    #info(_g("extracting %s in %s"), $srcpkg->{'fields'}{'Source'}, $newdirectory);
-    printf(_g("%s: extracting %s in %s")."\n", $progname,
-           $srcpkg->{'fields'}{'Source'}, $newdirectory);
+    info(_g("extracting %s in %s"), $srcpkg->{'fields'}{'Source'}, $newdirectory);
     $srcpkg->extract($newdirectory);
 
     exit(0);
@@ -375,7 +363,7 @@ Build options:
   -l<changelogfile>        get per-version info from this file.
   -F<changelogformat>      force change log format.
   -V<name>=<value>         set a substitution variable.
-  -T<varlistfile>          read variables here, not debian/substvars.
+  -T<varlistfile>          read variables here.
   -D<field>=<value>        override or add a .dsc field and value.
   -U<field>                remove a field.
   -q                       quiet mode.
@@ -383,15 +371,15 @@ Build options:
                              (defaults to: '%s').
   -I[<pattern>]            filter out files when building tarballs
                              (defaults to: %s).
-  -Z<compression>          select compression to use (defaults to 'gzip',
+  -Z<compression>          select compression to use (defaults to '%s',
                              supported are: %s).
-  -z<level>                compression level to use (defaults to '9',
+  -z<level>                compression level to use (defaults to '%d',
                              supported are: '1'-'9', 'best', 'fast')
 
 Extract options:
   --no-copy                don't copy .orig tarballs
-  --no-check               don't check signature and checksums before
-                             unpacking
+  --no-check               don't check signature and checksums before unpacking
+  --require-valid-signature abort if the package doesn't have a valid signature
 
 General options:
   -h, --help               show this help message.
@@ -402,6 +390,7 @@ See dpkg-source(1) for more info.
 "), $progname,
     $Dpkg::Source::Package::diff_ignore_default_regexp,
     join(' ', map { "-I$_" } @Dpkg::Source::Package::tar_ignore_default_pattern),
-    "@comp_supported";
+    $Dpkg::Source::Compressor::default_compression, "@comp_supported",
+    $Dpkg::Source::Compressor::default_compression_level;
 }
 

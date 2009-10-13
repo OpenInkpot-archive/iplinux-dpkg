@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * pkgtop.cc - handles (re)draw of package list windows colheads, list, thisstate
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -18,23 +18,26 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <ctype.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "pkglist.h"
 
-const char *pkgprioritystring(const struct pkginfo *pkg) {
+static const char *
+pkgprioritystring(const struct pkginfo *pkg)
+{
   if (pkg->priority == pkginfo::pri_unset) {
     return 0;
   } else if (pkg->priority == pkginfo::pri_other) {
@@ -139,6 +142,7 @@ void packagelist::redraw1itemsel(int index, int selected) {
   const char *p;
   const struct pkginfo *pkg= table[index]->pkg;
   const struct pkginfoperfile *info= &pkg->available;
+  int screenline = index - topofscreen;
 
   wattrset(listpad, selected ? listsel_attr : list_attr);
 
@@ -146,7 +150,7 @@ void packagelist::redraw1itemsel(int index, int selected) {
 
     if (verbose) {
 
-      mvwprintw(listpad,index,0, "%-*.*s ",
+      mvwprintw(listpad, screenline, 0, "%-*.*s ",
                 status_hold_width, status_hold_width,
                 gettext(eflagstrings[pkg->eflag]));
       wprintw(listpad, "%-*.*s ",
@@ -154,7 +158,7 @@ void packagelist::redraw1itemsel(int index, int selected) {
               gettext(statusstrings[pkg->status]));
       wprintw(listpad, "%-*.*s ",
               status_want_width, status_want_width,
-              /* fixme: keep this ? */
+              /* FIXME: keep this? */
               /*table[index]->original == table[index]->selected ? "(same)"
               : */gettext(wantstrings[table[index]->original]));
       wattrset(listpad, selected ? selstatesel_attr : selstate_attr);
@@ -164,17 +168,17 @@ void packagelist::redraw1itemsel(int index, int selected) {
       wattrset(listpad, selected ? listsel_attr : list_attr);
       waddch(listpad, ' ');
   
-      mvwprintw(listpad,index,priority_column-1, " %-*.*s",
+      mvwprintw(listpad, screenline, priority_column - 1, " %-*.*s",
                 priority_width, priority_width,
                 pkg->priority == pkginfo::pri_other ? pkg->otherpriority :
                 gettext(prioritystrings[pkg->priority]));
 
     } else {
 
-      mvwaddch(listpad,index,0, eflagchars[pkg->eflag]);
+      mvwaddch(listpad, screenline, 0, eflagchars[pkg->eflag]);
       waddch(listpad, statuschars[pkg->status]);
       waddch(listpad,
-             /* fixme: keep this feature? */
+             /* FIXME: keep this feature? */
              /*table[index]->original == table[index]->selected ? ' '
              : */wantchars[table[index]->original]);
     
@@ -182,7 +186,8 @@ void packagelist::redraw1itemsel(int index, int selected) {
       waddch(listpad, wantchars[table[index]->selected]);
       wattrset(listpad, selected ? listsel_attr : list_attr);
       
-      wmove(listpad,index,priority_column-1); waddch(listpad,' ');
+      wmove(listpad, screenline, priority_column - 1);
+      waddch(listpad, ' ');
       if (pkg->priority == pkginfo::pri_other) {
         int i;
         const char *p;
@@ -198,22 +203,22 @@ void packagelist::redraw1itemsel(int index, int selected) {
 
     }
 
-    mvwprintw(listpad,index,section_column-1, " %-*.*s",
+    mvwprintw(listpad, screenline, section_column - 1, " %-*.*s",
               section_width, section_width,
               pkg->section ? pkg->section : "?");
   
-    mvwprintw(listpad,index,package_column-1, " %-*.*s ",
+    mvwprintw(listpad, screenline, package_column - 1, " %-*.*s ",
               package_width, package_width, pkg->name);
 
     if (versioninstalled_width)
-      mvwprintw(listpad,index,versioninstalled_column, "%-*.*s ",
+      mvwprintw(listpad, screenline, versioninstalled_column, "%-*.*s ",
                 versioninstalled_width, versioninstalled_width,
                 versiondescribe(&pkg->installed.version, vdew_nonambig));
     if (versionavailable_width) {
       if (informativeversion(&pkg->available.version) &&
           versioncompare(&pkg->available.version,&pkg->installed.version) > 0)
         wattrset(listpad, selected ? selstatesel_attr : selstate_attr);
-      mvwprintw(listpad,index,versionavailable_column, "%-*.*s",
+      mvwprintw(listpad, screenline, versionavailable_column, "%-*.*s",
                 versionavailable_width, versionavailable_width,
                 versiondescribe(&pkg->available.version, vdew_nonambig));
       wattrset(listpad, selected ? listsel_attr : list_attr);
@@ -221,7 +226,8 @@ void packagelist::redraw1itemsel(int index, int selected) {
     }
 
     i= description_width;
-    p= info->description ? info->description : "";
+    p= info->description ? info->description :
+       pkg->installed.description ? pkg->installed.description : "";
     while (i>0 && *p && *p != '\n') { waddnstr(listpad,p,1); i--; p++; }
       
   } else {
@@ -235,7 +241,7 @@ void packagelist::redraw1itemsel(int index, int selected) {
     
     indent= describemany(buf,priority,section,pkg->clientdata);
 
-    mvwaddstr(listpad,index,0, "    ");
+    mvwaddstr(listpad, screenline, 0, "    ");
     i= total_width-7;
     j= (indent<<1) + 1;
     while (j-- >0) { waddch(listpad,ACS_HLINE); i--; }

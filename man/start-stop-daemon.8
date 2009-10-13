@@ -1,4 +1,4 @@
-.TH start\-stop\-daemon 8 "2008-01-30" "Debian Project" "dpkg utilities"
+.TH start\-stop\-daemon 8 "2009-01-04" "Debian Project" "dpkg utilities"
 .SH NAME
 start\-stop\-daemon \- start and stop system daemon programs
 .
@@ -24,8 +24,8 @@ will scan the process table looking for any processes which
 match the process name, uid, and/or gid (if specified). Any
 matching process will prevent
 .BR \-\-start
-from starting the daemon. All matching processes will be
-sent the KILL signal if
+from starting the daemon. All matching processes will be sent the TERM
+signal (or the one specified via \fB\-\-signal\fP or \fB\-\-retry\fP) if
 .BR \-\-stop
 is specified. For daemons which have long-lived children
 which need to live through a
@@ -105,7 +105,7 @@ Change to \fIgroup\fP or \fIgid\fP when starting the process.
 .BR \-s ", " \-\-signal " \fIsignal\fP"
 With
 .BR \-\-stop ,
-specifies the signal to send to processes being stopped (default 15).
+specifies the signal to send to processes being stopped (default TERM).
 .TP
 .BR \-R ", " \-\-retry " \fItimeout\fP|\fIschedule\fP"
 With
@@ -218,6 +218,19 @@ code for them to do this themselves.
 .TP
 .BR \-N ", " \-\-nicelevel " \fIint\fP"
 This alters the priority of the process before starting it.
+.TP
+.BR \-P ", " \-\-procsched " \fIpolicy\fP\fB:\fP\fIpriority\fP"
+This alters the process scheduler policy and priority of the process before
+starting it. The priority can be optionally specified by appending a \fB:\fP
+followed by the value. The default \fIpriority\fP is 0. The currently
+supported policy values are \fBother\fP, \fBfifo\fP and \fBrr\fP.
+.TP
+.BR \-I ", " \-\-iosched " \fIclass\fP\fB:\fP\fIpriority\fP"
+This alters the IO scheduler class and priority of the process before starting
+it. The priority can be optionally specified by appending a \fB:\fP followed
+by the value. The default \fIpriority\fP is 4, unless \fIclass\fP is \fBidle\fP,
+then \fIpriority\fP will always be 7. The currently supported values for
+\fIclass\fP are \fBidle\fP, \fBbest-effort\fP and \fBreal-time\fP.
 .TP
 .BR \-k ", " \-\-umask " \fImask\fP"
 This sets the umask of the process before starting it.

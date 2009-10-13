@@ -2,8 +2,8 @@
  * dselect - selection of Debian packages
  * dselect.h - external definitions for this program
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2001 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -23,12 +23,14 @@
 #ifndef DSELECT_H
 #define DSELECT_H
 
+#define DSELECT		"dselect"
+
 #define TOTAL_LIST_WIDTH 180
 #define MAX_DISPLAY_INFO 120
 
 #include <signal.h>
-#undef ERR
-#include <ncursesw/curses.h>
+
+#include "dselect-curses.h"
 
 struct helpmenuentry {
   char key;

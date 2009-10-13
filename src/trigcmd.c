@@ -1,7 +1,7 @@
 /*
  * dpkg-trigger - trigger management utility
  *
- * Copyright (C) 2007 Canonical Ltd.
+ * Copyright © 2007 Canonical Ltd.
  * Written by Ian Jackson <ian@davenant.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
@@ -20,12 +20,14 @@
  */
 
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <fnmatch.h>
-#include <assert.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -33,86 +35,78 @@
 #include <sys/termios.h>
 #include <fcntl.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
-#include <myopt.h>
+#if HAVE_LOCALE_H
+#include <locale.h>
+#endif
 
-static const char *bypackage, *activate, *admindir = ADMINDIR;
-static int f_noact, f_check;
-
-static void
-noawait(const struct cmdinfo *ci, const char *value)
-{
-	bypackage = "-";
-}
-
-static const struct cmdinfo cmdinfos[] = {
-	{ "admindir",        0,   1, NULL,     &admindir },
-	{ "by-package",      'f', 1, NULL,     &bypackage },
-	{ "no-await",        0,   0, NULL,     &bypackage, noawait },
-	{ "no-act",          0,   0, &f_noact, NULL,       0, 1 },
-	{ "check-supported", 0,   0, &f_check, NULL,       0, 1 },
-	{ "help",            'h', 0, NULL,     NULL,       helponly },
-	{ "version",         0,   0, NULL,     NULL,       versiononly },
-	/* UK spelling */
-	{ "licence",         0,   0, NULL,     NULL,       showcopyright },
-	/* US spelling */
-	{ "license",         0,   0, NULL,     NULL,       showcopyright },
-	{  NULL  }
-};
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/myopt.h>
 
 const char thisname[] = "dpkg-trigger";
 
 const char printforhelp[] = N_(
 "Type dpkg-trigger --help for help about this utility.");
 
-void
-printversion(void)
+static void
+printversion(const struct cmdinfo *ci, const char *value)
 {
-	if (printf(_("Debian %s package trigger utility.\n"), thisname) < 0)
-		werr("stdout");
+	printf(_("Debian %s package trigger utility.\n"), thisname);
 
-	if (printf(_(
+	printf(_(
 "This is free software; see the GNU General Public License version 2 or\n"
 "later for copying conditions. There is NO warranty.\n"
-"See %s --license for copyright and license details.\n"), thisname) < 0)
-		werr("stdout");
+"See %s --license for copyright and license details.\n"), thisname);
+
+	m_output(stdout, _("<standard output>"));
+
+	exit(0);
 }
 
-void
-usage(void)
+static void
+usage(const struct cmdinfo *ci, const char *value)
 {
-	if (printf(_(
+	printf(_(
 "Usage: %s [<options> ...] <trigger-name>\n"
 "       %s [<options> ...] <command>\n"
-"\n"), thisname, thisname) < 0)
-		werr ("stdout");
+"\n"), thisname, thisname);
 
-	if (printf(_(
+	printf(_(
 "Commands:\n"
 "  --check-supported                Check if the running dpkg supports triggers.\n"
-"\n")) < 0)
-		werr ("stdout");
+"\n"));
 
-	if (printf(_(
+	printf(_(
 "  -h|--help                        Show this help message.\n"
 "  --version                        Show the version.\n"
 "  --license|--licence              Show the copyright licensing terms.\n"
-"\n")) < 0)
-		werr ("stdout");
+"\n"));
 
-	if (printf(_(
+	printf(_(
 "Options:\n"
 "  --admindir=<directory>           Use <directory> instead of %s.\n"
 "  --by-package=<package>           Override trigger awaiter (normally set\n"
 "                                     by dpkg).\n"
 "  --no-await                       No package needs to await the processing.\n"
 "  --no-act                         Just test - don't actually change anything.\n"
-"\n"), admindir) < 0)
-		werr("stdout");
+"\n"), ADMINDIR);
+
+	m_output(stdout, _("<standard output>"));
+
+	exit(0);
 }
 
+static const char *admindir = ADMINDIR;
+static int f_noact, f_check;
+
+static const char *bypackage, *activate;
 static int done_trig, ctrig;
+
+static void
+noawait(const struct cmdinfo *ci, const char *value)
+{
+	bypackage = "-";
+}
 
 static void
 yespackage(const char *awname)
@@ -170,9 +164,24 @@ do_check(void)
 	case -2:
 		exit(0);
 	default:
-		abort();
+		internerr("unknown trigdef_update_start return value '%d'", uf);
 	}
 }
+
+static const struct cmdinfo cmdinfos[] = {
+	{ "admindir",        0,   1, NULL,     &admindir },
+	{ "by-package",      'f', 1, NULL,     &bypackage },
+	{ "no-await",        0,   0, NULL,     &bypackage, noawait },
+	{ "no-act",          0,   0, &f_noact, NULL,       NULL, 1 },
+	{ "check-supported", 0,   0, &f_check, NULL,       NULL, 1 },
+	{ "help",            'h', 0, NULL,     NULL,       usage   },
+	{ "version",         0,   0, NULL,     NULL,       printversion  },
+	/* UK spelling */
+	{ "licence",         0,   0, NULL,     NULL,       showcopyright },
+	/* US spelling */
+	{ "license",         0,   0, NULL,     NULL,       showcopyright },
+	{  NULL  }
+};
 
 int
 main(int argc, const char *const *argv)
@@ -182,17 +191,24 @@ main(int argc, const char *const *argv)
 	const char *badname;
 	enum trigdef_updateflags tduf;
 
-	standard_startup(&ejbuf, argc, &argv, NULL, 0, cmdinfos);
+	setlocale(LC_ALL, "");
+	bindtextdomain(PACKAGE, LOCALEDIR);
+	textdomain(PACKAGE);
+
+	standard_startup(&ejbuf);
+	myopt(&argv, cmdinfos);
+
 	setvbuf(stdout, NULL, _IONBF, 0);
 
 	if (f_check) {
 		if (*argv)
-			badusage(_("dpkg-trigger --check-supported takes no arguments"));
+			badusage(_("--%s takes no arguments"),
+			         "check-supported");
 		do_check();
 	}
 
 	if (!*argv || argv[1])
-		badusage(_("dpkg-trigger takes one argument, the trigger name"));
+		badusage(_("takes one argument, the trigger name"));
 
 	if (!bypackage) {
 		bypackage = getenv(MAINTSCRIPTPKGENVVAR);
@@ -207,7 +223,7 @@ main(int argc, const char *const *argv)
 
 	activate = argv[0];
 	if ((badname = illegal_triggername(activate)))
-		badusage(_("dpkg-trigger: invalid trigger name `%.250s': %.250s"),
+		badusage(_("invalid trigger name `%.250s': %.250s"),
 		         activate, badname);
 
 	trigdef = &tdm_add;
@@ -223,7 +239,7 @@ main(int argc, const char *const *argv)
 		trigdef_process_done();
 	}
 
-	standard_shutdown(0);
+	standard_shutdown();
 
 	return 0;
 }

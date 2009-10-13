@@ -2,7 +2,7 @@
  * dselect - Debian package maintenance user interface
  * pkgkeys.cc - package list keybindings
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -18,18 +18,12 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
 
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
+#include <dpkg/dpkg-db.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
 #include "dselect.h"
 #include "bindings.h"
 

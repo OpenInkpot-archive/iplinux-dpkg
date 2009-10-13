@@ -2,8 +2,8 @@
  * dselect - Debian package maintenance user interface
  * bcommands.cc - base list keyboard commands display
  *
- * Copyright (C) 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2000,2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1994,1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2000,2001 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,17 +19,18 @@
  * License along with this; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-extern "C" {
+
 #include <config.h>
-}
+#include <compat.h>
+
+#include <dpkg/i18n.h>
+
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
 
-extern "C" {
-#include <dpkg.h>
-#include <dpkg-db.h>
-}
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+
 #include "dselect.h"
 #include "helpmsgs.h"
 
@@ -83,7 +84,7 @@ void baselist::kd_redraw() {
 //  RFSH(colheadspad); 
 //  RFSH(thisstatepad); 
 //  RFSH(titlewin); 
-//  RFSH(whatinfowin); /* fixme-ncurses: why does ncurses need this ? */
+//  RFSH(whatinfowin); /* FIXME: why does ncurses need this? */
   clearok(curscr,TRUE);
   redrawall();
   if (debug) fprintf(debug,"baselist[%p]::kd_redraw() done\n",this);
@@ -119,11 +120,11 @@ void baselist::kd_search() {
   strcpy(newsearchstring,searchstring);
   werase(querywin);
   mvwaddstr(querywin,0,0, _("Search for ? "));
-  echo(); /* fixme: ncurses documentation or implementation */
+  echo(); /* FIXME: ncurses documentation or implementation. */
   if (wgetnstr(querywin,newsearchstring,sizeof(newsearchstring)-1) == ERR)
     searchstring[0]= 0;
-  raise(SIGWINCH); /* fixme: ncurses and xterm arrow keys */
-  noecho(); /* fixme: ncurses */
+  raise(SIGWINCH); /* FIXME: ncurses and xterm arrow keys. */
+  noecho(); /* FIXME: ncurses. */
   if (whatinfo_height) { touchwin(whatinfowin); refreshinfo(); }
   else if (info_height) { touchwin(infopad); refreshinfo(); }
   else if (thisstate_height) redrawthisstate();
@@ -155,7 +156,6 @@ void baselist::displayerror(const char* str) {
 
 
 void baselist::displayhelp(const struct helpmenuentry *helpmenu, int key) {
-  const struct helpmenuentry *hme;
   int maxx, maxy, i, y, x, nextkey;
   
   getmaxyx(stdscr,maxy,maxx);
@@ -163,7 +163,9 @@ void baselist::displayhelp(const struct helpmenuentry *helpmenu, int key) {
   clearok(stdscr,TRUE);
   for (;;) {
     werase(stdscr);
-    for (hme= helpmenu; hme->key && hme->key != key; hme++);
+    const struct helpmenuentry *hme = helpmenu;
+    while (hme->key && hme->key != key)
+      hme++;
     if (hme->key) {
       attrset(helpscreen_attr);
       mvaddstr(1,0, gettext(hme->msg->text));

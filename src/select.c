@@ -2,7 +2,7 @@
  * dpkg - main program for package management
  * select.c - by-hand (rather than dselect-based) package selection
  *
- * Copyright (C) 1995,1996 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 1995,1996 Ian Jackson <ian@chiark.greenend.org.uk>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -19,15 +19,20 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 #include <fnmatch.h>
 #include <ctype.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/pkg-array.h>
+#include <dpkg/myopt.h>
 
 #include "filesdb.h"
 #include "main.h"
@@ -41,38 +46,29 @@ static void getsel1package(struct pkginfo *pkg) {
 }         
 
 void getselections(const char *const *argv) {
-  struct pkgiterator *it;
+  struct pkg_array array;
   struct pkginfo *pkg;
-  struct pkginfo **pkgl;
   const char *thisarg;
-  int np, i, head, found;
+  int i, head, found;
 
   modstatdb_init(admindir,msdbrw_readonly);
 
-  np= countpackages();
-  pkgl= m_malloc(sizeof(struct pkginfo*)*np);
-  it= iterpkgstart(); i=0;
-  while ((pkg= iterpkgnext(it))) {
-    assert(i<np);
-    pkgl[i++]= pkg;
-  }
-  iterpkgend(it);
-  assert(i==np);
+  pkg_array_init_from_db(&array);
+  pkg_array_sort(&array, pkg_sorter_by_name);
 
-  qsort(pkgl,np,sizeof(struct pkginfo*),pkglistqsortcmp);
   head=0;
   
   if (!*argv) {
-    for (i=0; i<np; i++) {
-      pkg= pkgl[i];
+    for (i = 0; i < array.n_pkgs; i++) {
+      pkg = array.pkgs[i];
       if (pkg->status == stat_notinstalled) continue;
       getsel1package(pkg);
     }
   } else {
     while ((thisarg= *argv++)) {
       found= 0;
-      for (i=0; i<np; i++) {
-        pkg= pkgl[i];
+      for (i = 0; i < array.n_pkgs; i++) {
+        pkg = array.pkgs[i];
         if (fnmatch(thisarg,pkg->name,0)) continue;
         getsel1package(pkg); found++;
       }
@@ -80,8 +76,11 @@ void getselections(const char *const *argv) {
         fprintf(stderr,_("No packages found matching %s.\n"),thisarg);
     }
   }
-  if (ferror(stdout)) werr("stdout");
-  if (ferror(stderr)) werr("stderr");
+
+  m_output(stdout, _("<standard output>"));
+  m_output(stderr, _("<standard error>"));
+
+  pkg_array_free(&array);
 }
 
 void setselections(const char *const *argv) {
@@ -89,15 +88,14 @@ void setselections(const char *const *argv) {
   struct pkginfo *pkg;
   const char *e;
   int c, lno;
-  struct varbuf namevb;
-  struct varbuf selvb;
+  struct varbuf namevb = VARBUF_INIT;
+  struct varbuf selvb = VARBUF_INIT;
 
-  if (*argv) badusage(_("--set-selections does not take any argument"));
+  if (*argv)
+    badusage(_("--%s takes no arguments"), cipaction->olong);
 
   modstatdb_init(admindir,msdbrw_write);
 
-  varbufinit(&namevb);
-  varbufinit(&selvb);
   lno= 1;
   for (;;) {
     varbufreset(&namevb);
@@ -130,7 +128,7 @@ void setselections(const char *const *argv) {
     }
     varbufaddc(&namevb,0);
     varbufaddc(&selvb,0);
-    e= illegal_packagename(namevb.buf,0);
+    e = illegal_packagename(namevb.buf, NULL);
     if (e) ohshit(_("illegal package name at line %d: %.250s"),lno,e);
     for (nvp=wantinfos; nvp->name && strcmp(nvp->name,selvb.buf); nvp++);
     if (!nvp->name) ohshit(_("unknown wanted status at line %d: %.250s"),lno,selvb.buf);
@@ -141,8 +139,8 @@ void setselections(const char *const *argv) {
   }
   if (ferror(stdin)) ohshite(_("read error on standard input"));
   modstatdb_shutdown();
-  varbufreset(&namevb);
-  varbufreset(&selvb);
+  varbuffree(&namevb);
+  varbuffree(&selvb);
 }
 
 void clearselections(const char *const *argv)
@@ -151,7 +149,7 @@ void clearselections(const char *const *argv)
   struct pkginfo *pkg;
 
   if (*argv)
-    badusage(_("--clear-selections does not take any argument"));
+    badusage(_("--%s takes no arguments"), cipaction->olong);
 
   modstatdb_init(admindir, msdbrw_write);
 

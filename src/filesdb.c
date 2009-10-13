@@ -2,8 +2,8 @@
  * dpkg - main program for package management
  * filesdb.c - management of database of files installed on system
  *
- * Copyright (C) 1995 Ian Jackson <ian@chiark.greenend.org.uk>
- * Copyright (C) 2000,2001 Wichert Akkerman <wakkerma@debian.org>
+ * Copyright © 1995 Ian Jackson <ian@chiark.greenend.org.uk>
+ * Copyright © 2000,2001 Wichert Akkerman <wakkerma@debian.org>
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as
@@ -20,8 +20,12 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <config.h>
+#include <compat.h>
+
+#include <dpkg/i18n.h>
 
 #include <assert.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
@@ -32,8 +36,11 @@
 #include <grp.h>
 #include <sys/types.h>
 
-#include <dpkg.h>
-#include <dpkg-db.h>
+#include <dpkg/dpkg.h>
+#include <dpkg/dpkg-db.h>
+#include <dpkg/path.h>
+#include <dpkg/buffer.h>
+#include <dpkg/progress.h>
 
 #include "filesdb.h"
 #include "main.h"
@@ -42,9 +49,6 @@
 
 static int allpackagesdone= 0;
 static int nfiles= 0;
-static struct diversion *diversions = NULL;
-static FILE *diversionsfile = NULL;
-static FILE *statoverridefile = NULL;
 
 void
 ensure_package_clientdata(struct pkginfo *pkg)
@@ -136,9 +140,8 @@ void ensure_packagefiles_available(struct pkginfo *pkg) {
     onerr_abort--;
     if (pkg->status != stat_configfiles) {
       if (saidread == 1) putc('\n',stderr);
-      fprintf(stderr,
-              _("dpkg: serious warning: files list file for package `%.250s' missing,"
-              " assuming package has no files currently installed.\n"), pkg->name);
+      warning(_("files list file for package `%.250s' missing, assuming "
+                "package has no files currently installed."), pkg->name);
     }
     pkg->clientdata->files = NULL;
     pkg->clientdata->fileslistvalid= 1;
@@ -148,7 +151,8 @@ void ensure_packagefiles_available(struct pkginfo *pkg) {
   push_cleanup(cu_closefd, ehflag_bombout, NULL, 0, 1, &fd);
   
    if(fstat(fd, &stat_buf))
-     ohshite("unable to stat files list file for package `%.250s'",pkg->name);
+     ohshite(_("unable to stat files list file for package '%.250s'"),
+             pkg->name);
 
    if (stat_buf.st_size) {
      loaded_list = nfmalloc(stat_buf.st_size);
@@ -160,7 +164,8 @@ void ensure_packagefiles_available(struct pkginfo *pkg) {
     thisline = loaded_list;
     while (thisline < loaded_list_end) {
       if (!(ptr = memchr(thisline, '\n', loaded_list_end - thisline))) 
-        ohshit("files list file for package `%.250s' is missing final newline",pkg->name);
+        ohshit(_("files list file for package '%.250s' is missing final newline"),
+               pkg->name);
       /* where to start next time around */
       nextline = ptr + 1;
       /* strip trailing "/" */
@@ -168,7 +173,7 @@ void ensure_packagefiles_available(struct pkginfo *pkg) {
       /* add the file to the list */
       if (ptr == thisline)
         ohshit(_("files list file for package `%.250s' contains empty filename"),pkg->name);
-      *ptr = 0;
+      *ptr = '\0';
       newent= nfmalloc(sizeof(struct fileinlist));
       newent->namenode= findnamenode(thisline, fnn_nocopy);
       newent->next = NULL;
@@ -208,19 +213,28 @@ void ensure_packagefiles_available(struct pkginfo *pkg) {
 void ensure_allinstfiles_available(void) {
   struct pkgiterator *it;
   struct pkginfo *pkg;
-    
+  struct progress progress;
+
   if (allpackagesdone) return;
   if (saidread<2) {
+    int max = countpackages();
+
     saidread=1;
-    printf(_("(Reading database ... "));
+    progress_init(&progress, _("(Reading database ... "), max);
   }
+
   it= iterpkgstart();
-  while ((pkg = iterpkgnext(it)) != NULL)
+  while ((pkg = iterpkgnext(it)) != NULL) {
     ensure_packagefiles_available(pkg);
+
+    if (saidread == 1)
+      progress_step(&progress);
+  }
   iterpkgend(it);
   allpackagesdone= 1;
 
   if (saidread==1) {
+    progress_done(&progress);
     printf(_("%d files and directories currently installed.)\n"),nfiles);
     saidread=2;
   }
@@ -318,200 +332,6 @@ void reversefilelist_abort(struct reversefilelistiter *iterptr) {
   while (reversefilelist_next(iterptr));
 }
 
-void ensure_statoverrides(void) {
-  static struct varbuf vb;
-
-  struct stat stab1, stab2;
-  FILE *file;
-  char *loaded_list, *loaded_list_end, *thisline, *nextline, *ptr;
-  struct filestatoverride *fso;
-  struct filenamenode *fnn;
-
-  varbufreset(&vb);
-  varbufaddstr(&vb,admindir);
-  varbufaddstr(&vb,"/" STATOVERRIDEFILE);
-  varbufaddc(&vb,0);
-
-  onerr_abort++;
-
-  file= fopen(vb.buf,"r");
-  if (!file) {
-    if (errno != ENOENT) ohshite(_("failed to open statoverride file"));
-    if (!statoverridefile) { onerr_abort--; return; }
-  } else {
-    if (fstat(fileno(file),&stab2))
-      ohshite(_("failed to fstat statoverride file"));
-    if (statoverridefile) {
-      if (fstat(fileno(statoverridefile),&stab1))
-	ohshite(_("failed to fstat previous statoverride file"));
-      if (stab1.st_dev == stab2.st_dev && stab1.st_ino == stab2.st_ino) {
-	fclose(file); onerr_abort--; return;
-      }
-    }
-  }
-  if (statoverridefile) fclose(statoverridefile);
-  statoverridefile= file;
-  setcloexec(fileno(statoverridefile), vb.buf);
-
-  /* If the statoverride list is empty we don't need to bother reading it. */
-  if (!stab2.st_size) {
-    onerr_abort--;
-    return;
-  }
-
-  loaded_list = nfmalloc(stab2.st_size);
-  loaded_list_end = loaded_list + stab2.st_size;
-
-  fd_buf_copy(fileno(file), loaded_list, stab2.st_size, _("statoverride file `%.250s'"), vb.buf);
-
-  thisline = loaded_list;
-  while (thisline<loaded_list_end) {
-    char* endptr;
-
-    fso= nfmalloc(sizeof(struct filestatoverride));
-
-    if (!(ptr = memchr(thisline, '\n', loaded_list_end - thisline))) 
-      ohshit("statoverride file is missing final newline");
-    /* where to start next time around */
-    nextline = ptr + 1;
-    if (ptr == thisline)
-      ohshit(_("statoverride file contains empty line"));
-    *ptr = 0;
-
-    /* Extract the uid */
-    if (!(ptr=memchr(thisline, ' ', nextline-thisline)))
-      ohshit("syntax error in statoverride file ");
-    *ptr=0;
-    if (thisline[0]=='#') {
-      fso->uid=strtol(thisline + 1, &endptr, 10);
-      if (*endptr!=0)
-	ohshit("syntax error: invalid uid in statoverride file ");
-    } else {
-      struct passwd* pw = getpwnam(thisline);
-      if (pw==NULL)
-	ohshit("syntax error: unknown user `%s' in statoverride file ", thisline);
-      fso->uid=pw->pw_uid;
-    }
-
-    /* Move to the next bit */
-    thisline=ptr+1;
-    if (thisline>=loaded_list_end)
-      ohshit("unexpected end of line in statoverride file");
-
-    /* Extract the gid */
-    if (!(ptr=memchr(thisline, ' ', nextline-thisline)))
-      ohshit("syntax error in statoverride file ");
-    *ptr=0;
-    if (thisline[0]=='#') {
-      fso->gid=strtol(thisline + 1, &endptr, 10);
-      if (*endptr!=0)
-	ohshit("syntax error: invalid gid in statoverride file ");
-    } else {
-      struct group* gr = getgrnam(thisline);
-      if (gr==NULL)
-	ohshit("syntax error: unknown group `%s' in statoverride file ", thisline);
-      fso->gid=gr->gr_gid;
-    }
-
-    /* Move to the next bit */
-    thisline=ptr+1;
-    if (thisline>=loaded_list_end)
-      ohshit("unexpected end of line in statoverride file");
-
-    /* Extract the mode */
-    if (!(ptr=memchr(thisline, ' ', nextline-thisline)))
-      ohshit("syntax error in statoverride file ");
-    *ptr=0;
-    fso->mode=strtol(thisline, &endptr, 8);
-    if (*endptr!=0)
-      ohshit("syntax error: invalid mode in statoverride file ");
-
-    /* Move to the next bit */
-    thisline=ptr+1;
-    if (thisline>=loaded_list_end)
-      ohshit("unexecpted end of line in statoverride file");
-
-    fnn= findnamenode(thisline, 0);
-    if (fnn->statoverride)
-      ohshit("multiple statusoverides present for file `%.250s'", thisline);
-    fnn->statoverride=fso;
-    /* Moving on.. */
-    thisline=nextline;
-  }
-
-  onerr_abort--;
-}
-
-void ensure_diversions(void) {
-  static struct varbuf vb;
-
-  struct stat stab1, stab2;
-  char linebuf[MAXDIVERTFILENAME];
-  FILE *file;
-  struct diversion *ov, *oicontest, *oialtname;
-  int l;
-  
-  varbufreset(&vb);
-  varbufaddstr(&vb,admindir);
-  varbufaddstr(&vb,"/" DIVERSIONSFILE);
-  varbufaddc(&vb,0);
-
-  onerr_abort++;
-  
-  file= fopen(vb.buf,"r");
-  if (!file) {
-    if (errno != ENOENT) ohshite(_("failed to open diversions file"));
-    if (!diversionsfile) { onerr_abort--; return; }
-  } else if (diversionsfile) {
-    if (fstat(fileno(diversionsfile),&stab1))
-      ohshite(_("failed to fstat previous diversions file"));
-    if (fstat(fileno(file),&stab2))
-      ohshite(_("failed to fstat diversions file"));
-    if (stab1.st_dev == stab2.st_dev && stab1.st_ino == stab2.st_ino) {
-      fclose(file); onerr_abort--; return;
-    }
-  }
-  if (diversionsfile) fclose(diversionsfile);
-  diversionsfile= file;
-  setcloexec(fileno(diversionsfile), vb.buf);
-
-  for (ov= diversions; ov; ov= ov->next) {
-    ov->useinstead->divert->camefrom->divert = NULL;
-    ov->useinstead->divert = NULL;
-  }
-  diversions = NULL;
-  if (!file) { onerr_abort--; return; }
-
-  while ((l = fgets_checked(linebuf, sizeof(linebuf), file, vb.buf)) >= 0) {
-    oicontest= nfmalloc(sizeof(struct diversion));
-    oialtname= nfmalloc(sizeof(struct diversion));
-
-    oialtname->camefrom= findnamenode(linebuf, 0);
-    oialtname->useinstead = NULL;
-
-    fgets_must(linebuf, sizeof(linebuf), file, vb.buf);
-    oicontest->useinstead= findnamenode(linebuf, 0);
-    oicontest->camefrom = NULL;
-
-    fgets_must(linebuf, sizeof(linebuf), file, vb.buf);
-    oicontest->pkg= oialtname->pkg=
-      strcmp(linebuf, ":") ? findpackage(linebuf) : NULL;
-
-    if (oialtname->camefrom->divert || oicontest->useinstead->divert)
-      ohshit(_("conflicting diversions involving `%.250s' or `%.250s'"),
-             oialtname->camefrom->name, oicontest->useinstead->name);
-
-    oialtname->camefrom->divert= oicontest;
-    oicontest->useinstead->divert= oialtname;
-
-    oicontest->next= diversions;
-    diversions= oicontest;
-  }
-  if (ferror(file)) ohshite(_("read error in diversions [i]"));
-
-  onerr_abort--;
-}
-
 struct fileiterator {
   struct filenamenode *namenode;
   int nbinn;
@@ -573,7 +393,7 @@ struct filenamenode *findnamenode(const char *name, enum fnnflags flags) {
   const char *orig_name = name;
 
   /* We skip initial slashes and ./ pairs, and add our own single leading slash. */
-  name= skip_slash_dotslash(name);
+  name = path_skip_slash_dotslash(name);
 
   pointerp= bins + (hash(name) & (BINS-1));
   while (*pointerp) {

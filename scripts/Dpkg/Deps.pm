@@ -1,4 +1,4 @@
-# Copyright 2007 Raphael Hertzog <hertzog@debian.org>
+# Copyright © 2007-2009 Raphael Hertzog <hertzog@debian.org>
 #
 # This program is free software; you may redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,11 +18,11 @@
 #########################################################################
 # Several parts are inspired by lib/Dep.pm from lintian (same license)
 #
-# Copyright (C) 1998 Richard Braakman
-# Portions Copyright (C) 1999 Darren Benham
-# Portions Copyright (C) 2000 Sean 'Shaleh' Perry
-# Portions Copyright (C) 2004 Frank Lichtenheld
-# Portions Copyright (C) 2006 Russ Allbery
+# Copyright © 1998 Richard Braakman
+# Portions Copyright © 1999 Darren Benham
+# Portions Copyright © 2000 Sean 'Shaleh' Perry
+# Portions Copyright © 2004 Frank Lichtenheld
+# Portions Copyright © 2006 Russ Allbery
 
 package Dpkg::Deps;
 
@@ -36,29 +36,6 @@ The Dpkg::Deps module provides one generic Dpkg::Deps::parse() function
 to turn a dependency line in a set of Dpkg::Deps::{Simple,AND,OR,Union}
 objects depending on the case.
 
-It also provides some constants:
-
-=over 4
-
-=item @pkg_dep_fields
-
-List of fields that contains dependency-like information in a binary
-Debian package. The fields that express real dependencies are sorted from
-the stronger to the weaker.
-
-=item @src_dep_fields
-
-List of fields that contains dependencies-like information in a binary
-Debian package.
-
-=item %dep_field_type
-
-Associate to each field a type, either "normal" for a real dependency field
-(Pre-Depends, Depends, ...) or "union" for other relation fields sharing
-the same syntax (Conflicts, Breaks, etc.).
-
-=back
-
 =head1 FUNCTIONS
 
 =over 4
@@ -68,36 +45,15 @@ the same syntax (Conflicts, Breaks, etc.).
 use strict;
 use warnings;
 
-use Dpkg::Version qw(compare_versions);
+use Dpkg::Version;
 use Dpkg::Arch qw(get_host_arch);
-use Dpkg::ErrorHandling qw(warning);
+use Dpkg::ErrorHandling;
 use Dpkg::Gettext;
 
-our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(@pkg_dep_fields @src_dep_fields %dep_field_type
-		    %relation_ordering);
+use base qw(Exporter);
+our @EXPORT_OK = qw(%relation_ordering);
 
 # Some generic variables
-our @pkg_dep_fields = qw(Pre-Depends Depends Recommends Suggests Enhances
-                         Conflicts Breaks Replaces Provides);
-our @src_dep_fields = qw(Build-Depends Build-Depends-Indep
-                         Build-Conflicts Build-Conflicts-Indep);
-our %dep_field_type = (
-	'Pre-Depends' => 'normal',
-	'Depends' => 'normal',
-	'Recommends' => 'normal',
-	'Suggests' => 'normal',
-	'Enhances' => 'union',
-	'Conflicts' => 'union',
-	'Breaks' => 'union',
-	'Replaces' => 'union',
-	'Provides' => 'union',
-	'Build-Depends' => 'normal',
-	'Build-Depends-Indep' => 'normal',
-	'Build-Conflicts' => 'union',
-	'Build-Conflicts-Indep' => 'union',
-);
-
 our %relation_ordering = (
 	'undef' => 0,
 	'>=' => 1,
@@ -116,6 +72,7 @@ The arguments can also be undef in case there's no explicit architecture
 restriction.
 
 =cut
+
 sub arch_is_superset {
     my ($p, $q) = @_;
     my $p_arch_neg = defined($p) && $p->[0] =~ /^!/;
@@ -185,23 +142,30 @@ This functions returns 1 if the "p" dependency implies the "q"
 dependency. It returns 0 if the "p" dependency implies that "q" is
 not satisfied. It returns undef when there's no implication.
 
+The $v_p and $v_q parameter should be Dpkg::Version objects.
+
 =cut
+
 sub version_implies {
     my ($rel_p, $v_p, $rel_q, $v_q) = @_;
+
+    # If versions are not valid, we can't decide of any implication
+    return undef unless ref($v_p) and $v_p->isa("Dpkg::Version");
+    return undef unless ref($v_q) and $v_q->isa("Dpkg::Version");
 
     # q wants an exact version, so p must provide that exact version.  p
     # disproves q if q's version is outside the range enforced by p.
     if ($rel_q eq '=') {
         if ($rel_p eq '<<') {
-            return compare_versions($v_p, '<=', $v_q) ? 0 : undef;
+            return ($v_p <= $v_q) ? 0 : undef;
         } elsif ($rel_p eq '<=') {
-            return compare_versions($v_p, '<<', $v_q) ? 0 : undef;
+            return ($v_p < $v_q) ? 0 : undef;
         } elsif ($rel_p eq '>>') {
-            return compare_versions($v_p, '>=', $v_q) ? 0 : undef;
+            return ($v_p >= $v_q) ? 0 : undef;
         } elsif ($rel_p eq '>=') {
-            return compare_versions($v_p, '>>', $v_q) ? 0 : undef;
+            return ($v_p > $v_q) ? 0 : undef;
         } elsif ($rel_p eq '=') {
-            return compare_versions($v_p, '=', $v_q);
+            return ($v_p == $v_q);
         }
     }
 
@@ -210,13 +174,13 @@ sub version_implies {
     # p's clause is <<, <=, or =, the version must be <= q's to imply q.
     if ($rel_q eq '<=') {
         if ($rel_p eq '>>') {
-            return compare_versions($v_p, '>=', $v_q) ? 0 : undef;
+            return ($v_p >= $v_q) ? 0 : undef;
         } elsif ($rel_p eq '>=') {
-            return compare_versions($v_p, '>>', $v_q) ? 0 : undef;
+            return ($v_p > $v_q) ? 0 : undef;
 	} elsif ($rel_p eq '=') {
-            return compare_versions($v_p, '<=', $v_q) ? 1 : 0;
+            return ($v_p <= $v_q) ? 1 : 0;
         } else { # <<, <=
-            return compare_versions($v_p, '<=', $v_q) ? 1 : undef;
+            return ($v_p <= $v_q) ? 1 : undef;
         }
     }
 
@@ -224,37 +188,37 @@ sub version_implies {
     # version if the p relation is <= or =.
     if ($rel_q eq '<<') {
         if ($rel_p eq '>>' or $rel_p eq '>=') {
-            return compare_versions($v_p, '>=', $v_p) ? 0 : undef;
+            return ($v_p >= $v_p) ? 0 : undef;
         } elsif ($rel_p eq '<<') {
-            return compare_versions($v_p, '<=', $v_q) ? 1 : undef;
+            return ($v_p <= $v_q) ? 1 : undef;
 	} elsif ($rel_p eq '=') {
-            return compare_versions($v_p, '<<', $v_q) ? 1 : 0;
+            return ($v_p < $v_q) ? 1 : 0;
         } else { # <<, <=
-            return compare_versions($v_p, '<<', $v_q) ? 1 : undef;
+            return ($v_p < $v_q) ? 1 : undef;
         }
     }
 
     # Same logic as above, only inverted.
     if ($rel_q eq '>=') {
         if ($rel_p eq '<<') {
-            return compare_versions($v_p, '<=', $v_q) ? 0 : undef;
+            return ($v_p <= $v_q) ? 0 : undef;
         } elsif ($rel_p eq '<=') {
-            return compare_versions($v_p, '<<', $v_q) ? 0 : undef;
+            return ($v_p < $v_q) ? 0 : undef;
 	} elsif ($rel_p eq '=') {
-            return compare_versions($v_p, '>=', $v_q) ? 1 : 0;
+            return ($v_p >= $v_q) ? 1 : 0;
         } else { # >>, >=
-            return compare_versions($v_p, '>=', $v_q) ? 1 : undef;
+            return ($v_p >= $v_q) ? 1 : undef;
         }
     }
     if ($rel_q eq '>>') {
         if ($rel_p eq '<<' or $rel_p eq '<=') {
-            return compare_versions($v_p, '<=', $v_q) ? 0 : undef;
+            return ($v_p <= $v_q) ? 0 : undef;
         } elsif ($rel_p eq '>>') {
-            return compare_versions($v_p, '>=', $v_q) ? 1 : undef;
+            return ($v_p >= $v_q) ? 1 : undef;
 	} elsif ($rel_p eq '=') {
-            return compare_versions($v_p, '>>', $v_q) ? 1 : 0;
+            return ($v_p > $v_q) ? 1 : 0;
         } else {
-            return compare_versions($v_p, '>>', $v_q) ? 1 : undef;
+            return ($v_p > $v_q) ? 1 : undef;
         }
     }
 
@@ -290,12 +254,12 @@ current architecture.
 =item union (defaults to 0)
 
 If set to 1, returns a Dpkg::Deps::Union instead of a Dpkg::Deps::AND. Use
-this when parsing non-dependency fields like Conflicts (see
-%dep_field_type).
+this when parsing non-dependency fields like Conflicts.
 
 =back
 
 =cut
+
 sub parse {
     my $dep_line = shift;
     my %options = (@_);
@@ -304,13 +268,17 @@ sub parse {
     $options{host_arch} = get_host_arch() if not exists $options{host_arch};
     $options{union} = 0 if not exists $options{union};
 
+    # Strip trailing/leading spaces
+    $dep_line =~ s/^\s+//;
+    $dep_line =~ s/\s+$//;
+
     my @dep_list;
     foreach my $dep_and (split(/\s*,\s*/m, $dep_line)) {
         my @or_list = ();
         foreach my $dep_or (split(/\s*\|\s*/m, $dep_and)) {
 	    my $dep_simple = Dpkg::Deps::Simple->new($dep_or);
 	    if (not defined $dep_simple->{package}) {
-		warning(sprintf(_g("can't parse dependency %s"), $dep_and));
+		warning(_g("can't parse dependency %s"), $dep_or);
 		return undef;
 	    }
 	    $dep_simple->{arches} = undef if not $options{use_arch};
@@ -335,7 +303,13 @@ sub parse {
     } else {
 	$dep_and = Dpkg::Deps::AND->new();
     }
-    $dep_and->add($_) foreach (@dep_list);
+    foreach my $dep (@dep_list) {
+        if ($options{union} and not $dep->isa("Dpkg::Deps::Simple")) {
+            warning(_g("an union dependency can only contain simple dependencies"));
+            return undef;
+        }
+        $dep_and->add($dep);
+    }
     return $dep_and;
 }
 
@@ -347,6 +321,7 @@ dumping.
 =back
 
 =cut
+
 sub compare {
     my ($a, $b) = @_;
     return -1 if $a->is_empty();
@@ -506,8 +481,8 @@ use strict;
 use warnings;
 
 use Dpkg::Arch qw(debarch_is);
-use Dpkg::Version qw(compare_versions);
-use Dpkg::ErrorHandling qw(internerr);
+use Dpkg::Version;
+use Dpkg::ErrorHandling;
 use Dpkg::Gettext;
 
 sub new {
@@ -541,17 +516,14 @@ sub parse {
                 \s* \]                      # closing bracket
               )?                            # end of optional architecture
 	      \s*$			    # trailing spaces at end
-            /mx;
+            /x;
     $self->{package} = $1;
-    $self->{relation} = $2;
-    $self->{version} = $3;
+    $self->{relation} = version_normalize_relation($2) if defined($2);
+    if (defined($3)) {
+        $self->{version} = Dpkg::Version->new($3) || $3;
+    }
     if (defined($4)) {
 	$self->{arches} = [ split(/\s+/, $4) ];
-    }
-    # Standardize relation field
-    if (defined($self->{relation})) {
-	$self->{relation} = '<<' if ($self->{relation} eq '<');
-	$self->{relation} = '>>' if ($self->{relation} eq '>');
     }
 }
 
@@ -623,7 +595,8 @@ sub implies {
 	}
 	return $res;
     } else {
-	internerr(sprintf(_g("Dpkg::Deps::Simple can't evaluate implication with a %s!"), ref($o)));
+	internerr("Dpkg::Deps::Simple can't evaluate implication with a %s!",
+	          ref($o));
     }
 }
 
@@ -691,7 +664,8 @@ sub get_evaluation {
 		return 0;
 	    } else {
 		if (defined($param)) {
-		    if (compare_versions($param, $self->{relation}, $self->{version})) {
+		    if (version_compare_relation($param, $self->{relation},
+						 $self->{version})) {
 			return 1;
 		    } else {
 			return 0;
@@ -774,10 +748,11 @@ Add a new dependency object at the end of the list.
 =back
 
 =cut
+
 use strict;
 use warnings;
 
-use Dpkg::ErrorHandling qw(internerr);
+use Dpkg::ErrorHandling;
 
 sub new {
     my $this = shift;
@@ -1102,6 +1077,7 @@ packages provided (by the set of installed packages).
 Create a new object.
 
 =cut
+
 use strict;
 use warnings;
 
@@ -1120,6 +1096,7 @@ undefined we know that the package is installed but we don't know which
 version it is.
 
 =cut
+
 sub add_installed_package {
     my ($self, $pkg, $ver) = @_;
     $self->{pkg}{$pkg} = $ver;
@@ -1132,6 +1109,7 @@ and $version correspond to the associated relation given in the Provides
 field. This might be used in the future for versioned provides.
 
 =cut
+
 sub add_provided_package {
     my ($self, $pkg, $rel, $ver, $by) = @_;
     if (not exists $self->{virtualpkg}{$pkg}) {
@@ -1150,6 +1128,7 @@ listed as [ $provider, $relation, $version ]).
 =back
 
 =cut
+
 sub check_package {
     my ($self, $pkg) = @_;
     if (exists $self->{pkg}{$pkg}) {
