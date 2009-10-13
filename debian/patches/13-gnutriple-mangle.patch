@@ -19,7 +19,7 @@
  
  $v{DEB_HOST_ARCH} = get_raw_host_arch();
 -$v{DEB_HOST_GNU_TYPE} = debarch_to_gnutriplet($v{DEB_HOST_ARCH});
-+$v{DEB_HOST_GNU_TYPE} = hostdebarch_to_gnutriplet($v{DEB_HOST_ARCH});
++$v{DEB_HOST_GNU_TYPE} = builddebarch_to_gnutriplet($v{DEB_HOST_ARCH});
  
  # Set user values:
  
