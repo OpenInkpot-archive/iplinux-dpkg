@@ -2,7 +2,6 @@ dpkg-architecture
 dpkg-buildpackage
 dpkg-checkbuilddeps
 dpkg-distaddfile
-dpkg-divert
 dpkg-genchanges
 dpkg-gencontrol
 dpkg-gensymbols

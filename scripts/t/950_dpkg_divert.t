@@ -11,8 +11,8 @@ my $srcdir = $ENV{srcdir} || '.';
 my $admindir = File::Spec->rel2abs('t.tmp/dpkg-divert/admindir');
 my $testdir = File::Spec->rel2abs('t.tmp/dpkg-divert/testdir');
 
-my @dd = ("perl", "$srcdir/dpkg-divert.pl");
-#my @dd = ("$srcdir/../src/dpkg-divert");
+#my @dd = ("perl", "$srcdir/dpkg-divert.pl");
+my @dd = ("$srcdir/../src/dpkg-divert");
 
 plan tests => 248;
 

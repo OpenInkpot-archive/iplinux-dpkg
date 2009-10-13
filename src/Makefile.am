@@ -15,7 +15,8 @@ bin_PROGRAMS = \
 	dpkg \
 	dpkg-query \
 	dpkg-statoverride \
-	dpkg-trigger
+	dpkg-trigger \
+	dpkg-divert
 
 dpkg_SOURCES = \
 	archives.c archives.h \
@@ -70,6 +71,14 @@ dpkg_trigger_SOURCES = \
 	trigcmd.c
 
 dpkg_trigger_LDADD = \
+	../lib/dpkg/libdpkg.a \
+	../lib/compat/libcompat.a \
+	$(LIBINTL)
+
+dpkg_divert_SOURCES = \
+	divert.c
+
+dpkg_divert_LDADD = \
 	../lib/dpkg/libdpkg.a \
 	../lib/compat/libcompat.a \
 	$(LIBINTL)

@@ -2,3 +2,4 @@ dpkg
 dpkg-query
 dpkg-statoverride
 dpkg-trigger
+dpkg-divert
