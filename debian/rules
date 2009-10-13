@@ -97,7 +97,6 @@ install: check
 
 ifneq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
 	rm $(CURDIR)/debian/tmp/etc/alternatives/README
-	rm $(CURDIR)/debian/tmp/etc/dpkg/origins/debian
 endif
 
 # Put together the dpkg and dselect packages
