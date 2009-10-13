@@ -13,16 +13,16 @@ architecture is the runtime one.
  const char printforhelp[]= N_(
  "Type dpkg --help for help about installing and deinstalling packages [*];\n"
  "Use `dselect' or `aptitude' for user-friendly package management;\n"
-@@ -603,6 +603,9 @@
-   unsigned long infd;
-   int c, lno, i, skipchar;
+@@ -696,6 +696,9 @@
+ int main(int argc, const char *const *argv) {
+   jmp_buf ejbuf;
    static void (*actionfunction)(const char *const *argv);
 +  char *cross_shell_arch = getenv("CROSS_SHELL_ARCH");
 +
 +  architecture = strdup(cross_shell_arch ? cross_shell_arch : ARCHITECTURE);
  
-   pipein = *argv++;
-   if (pipein == NULL)
+   setlocale(LC_ALL, "");
+   bindtextdomain(PACKAGE, LOCALEDIR);
 --- a/src/main.h
 +++ b/src/main.h
 @@ -128,7 +128,7 @@
@@ -30,7 +30,7 @@ architecture is the runtime one.
  extern const char *instdir;
  extern struct pkg_list *ignoredependss;
 -extern const char architecture[];
-+extern const char *architecture;
++extern char *architecture;
  
  struct invoke_hook {
  	struct invoke_hook *next;
