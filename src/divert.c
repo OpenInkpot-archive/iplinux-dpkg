@@ -467,7 +467,7 @@ op_add(diversion *diversions, const char *file)
 	diversions = invert_diversions_list(diversions);
 
 	if (!quiet)
-		printf(_("Adding '%s'"), infon(d));
+		printf(_("Adding %s\n"), infon(d));
 
 	checkrename(file, divertto);
 	save(diversions);
