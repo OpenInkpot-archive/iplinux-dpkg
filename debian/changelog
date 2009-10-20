@@ -1,3 +1,9 @@
+dpkg (1.15.4+1.15.5-0.ip2) asimov; urgency=low
+
+  * Cosmetix fix: add missing \n in dpkg-divert --add output.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Tue, 20 Oct 2009 17:21:48 +0700
+
 dpkg (1.15.4+1.15.5-0.ip1) asimov; urgency=low
   
   [ Mikhail Gusarov ]
