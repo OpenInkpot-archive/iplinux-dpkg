@@ -59,17 +59,22 @@ my $facts = parse_status("$admindir/status");
 
 unless (defined($bd_value) or defined($bc_value)) {
     if (defined($target_arch)) {
-        $bd_value = $target_arch . '-cross-toolchain';
-        $bd_value .= ', ' . $fields->{'XCS-Cross-Host-Build-Depends'}
-            if defined $fields->{'XCS-Cross-Host-Build-Depends'};
+        my @bd;
+        if (!defined $fields->{'XCS-Needs-Cross-Toolchain'} or $fields->{'XCS-Needs-Cross-Toolchain'} ne 'no') {
+            unshift @bd, $target_arch . '-cross-toolchain' 
+        }
+        if (defined $fields->{'XCS-Cross-Host-Build-Depends'}) {
+            unshift @bd, (split /,\s+/, $fields->{'XCS-Cross-Host-Build-Depends'});
+        }
         if (defined($fields->{'XCS-Cross-Build-Depends'})) {
             # foo (>= 2.0), bar ---> foo-armel-cross (>= 2.0), bar-armel-cross
             for my $build_depend (split /,\s*/, $fields->{'XCS-Cross-Build-Depends'}) {
                 my @b = split / /, $build_depend;
                 $b[0] .= '-' . $target_arch . '-cross';
-                $bd_value .= ', ' . join(' ', @b);
+                unshift @bd, join(' ', @b);
             }
         }
+        $bd_value = join(', ', @bd);
     } else {
         $bd_value = 'build-essential';
         $bd_value .= ", " . $fields->{"Build-Depends"} if defined $fields->{"Build-Depends"};
