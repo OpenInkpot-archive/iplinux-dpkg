@@ -1,3 +1,9 @@
+dpkg (1.15.4+1.15.5-0.ip3) asimov; urgency=low
+
+  * Added support for XCS-Needs-Cross-Toolchain field.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Fri, 27 Nov 2009 18:50:22 +0600
+
 dpkg (1.15.4+1.15.5-0.ip2) asimov; urgency=low
 
   * Cosmetix fix: add missing \n in dpkg-divert --add output.
