@@ -253,7 +253,7 @@ if ($parallel) {
     Dpkg::BuildOptions::set($build_opts);
 }
 
-my $default_flags = defined $build_opts->{noopt} ? "-g -O0" : "-g -O2";
+my $default_flags = defined $build_opts->{noopt} ? "-g -O0" : "-g -Os";
 my %flags = ( CPPFLAGS => '',
 	      CFLAGS   => $default_flags,
 	      CXXFLAGS => $default_flags,
