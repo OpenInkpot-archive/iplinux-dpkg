@@ -1,3 +1,9 @@
+dpkg (1.15.4+1.15.5-0.ip4) zelazny; urgency=low
+
+  * CFLAGS default to "-g -Os" instead of "-g -O2".
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Sun, 03 Jan 2010 04:11:27 +0600
+
 dpkg (1.15.4+1.15.5-0.ip3) asimov; urgency=low
 
   * Added support for XCS-Needs-Cross-Toolchain field.
