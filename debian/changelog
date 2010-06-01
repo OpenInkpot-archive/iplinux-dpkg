@@ -1,3 +1,9 @@
+dpkg (1.15.4+1.15.5-0.ip5) zelazny; urgency=low
+
+  * Add uc{armel,mipsel,i386,amd64} architectures.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Wed, 02 Jun 2010 02:41:29 +0700
+
 dpkg (1.15.4+1.15.5-0.ip4) zelazny; urgency=low
 
   * CFLAGS default to "-g -Os" instead of "-g -O2".
