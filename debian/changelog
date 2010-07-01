@@ -1,3 +1,9 @@
+dpkg (1.15.4+1.15.5-0.ip6) zelazny; urgency=low
+
+  * Re-upload due to broken .ip5 build
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Thu, 01 Jul 2010 22:49:40 +0700
+
 dpkg (1.15.4+1.15.5-0.ip5) zelazny; urgency=low
 
   * Add uc{armel,mipsel,i386,amd64} architectures.
