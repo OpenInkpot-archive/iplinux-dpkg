@@ -1,3 +1,9 @@
+dpkg (1.15.4+1.15.5-0.ip7) zelazny; urgency=low
+
+  * Upload again after fixing udak
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Thu, 01 Jul 2010 23:56:19 +0700
+
 dpkg (1.15.4+1.15.5-0.ip6) zelazny; urgency=low
 
   * Re-upload due to broken .ip5 build
