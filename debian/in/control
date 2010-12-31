@@ -19,13 +19,3 @@ Description: Debian package management system
  .
  This package is modified by IPlinux to support uclibc architectures and
  cross-compilation.
-
-Package: start-stop-daemon
-Architecture: any
-Pre-Depends: ${shlibs:Depends}
-Description: Utility to start and stop system daemon programs
- start-stop-daemon is used to control the creation and termination of
- system-level processes.
- .
- This tool is packaged separately from dpkg in IPlinux to avoid circular
- dependencies.
