@@ -125,17 +125,10 @@ ifneq (,$(findstring nodocs,$(DEB_BUILD_OPTIONS)))
 endif
 endif
 
-ifeq (,$(findstring target, $(DEB_BUILD_OPTIONS)))
-	install -d debian/dpkg/usr/share/lintian/overrides
-	install -m 644 debian/dpkg.lintian-overrides \
-		       debian/dpkg/usr/share/lintian/overrides/dpkg
-	install -d debian/dselect/usr/share/lintian/overrides
-	install -m 644 debian/dselect.lintian-overrides \
-		       debian/dselect/usr/share/lintian/overrides/dselect
-endif
-
 	dh_link -a
+ifeq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
 	dh_lintian -a
+endif
 ifeq (,$(findstring nostrip,$(DEB_BUILD_OPTIONS)))
 	dh_strip -a
 endif
@@ -163,10 +156,6 @@ ifeq (,$(findstring target,$(DEB_BUILD_OPTIONS)))
 	dh_installcron -i
 	dh_link -i
 	dh_lintian -i
-
-	install -d debian/dpkg-dev/usr/share/lintian/overrides
-	install -m 644 debian/dpkg-dev.lintian-overrides \
-		       debian/dpkg-dev/usr/share/lintian/overrides/dpkg-dev
 endif
 
 	dh_compress -i
