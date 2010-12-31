@@ -1,3 +1,10 @@
+dpkg (1.15.4+1.15.5-0.ip8) zelazny; urgency=low
+
+  * Disable start-stop-daemon in target builds, provided by busybox.
+  * Remove /usr/share/lintian/overrides/dpkg.
+
+ -- Mikhail Gusarov <dottedmag@dottedmag.net>  Fri, 31 Dec 2010 14:31:56 +0100
+
 dpkg (1.15.4+1.15.5-0.ip7) zelazny; urgency=low
 
   * Upload again after fixing udak
